@@ -19,11 +19,7 @@ struct ContentView: View {
                 }
                 Section(header: Text("Containers")) {
                     ForEach(containerManager.containers) { container in
-                        NavigationLink {
-                            ContainerDetailView(containerId: container.id)
-                        } label: {
-                            ContainerRowView(container: container)
-                        }
+                        ContainerRowView(container: container)
                     }
                 }
             }
@@ -142,32 +138,38 @@ struct ContainerRowView: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Circle()
-                        .fill(container.status == .running ? Color.green : Color.red)
-                        .brightness(container.status == .running ? 0.15 : 0.05)
-                        .frame(width: 10, height: 10)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white.opacity(0.9), lineWidth: 1)
-                        )
-                        .shadow(color: Color.black.opacity(0.15), radius: 1, x: 0, y: 0)
-                    Text(container.name)
-                        .font(.headline)
-                }
-                HStack(spacing: 16) {
-                    if let image = container.image {
-                        Label(image, systemImage: "shippingbox")
-                            .font(.caption)
+            NavigationLink {
+                ContainerDetailView(containerId: container.id)
+            } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Circle()
+                            .fill(container.status == .running ? Color.green : Color.red)
+                            .brightness(container.status == .running ? 0.15 : 0.05)
+                            .frame(width: 10, height: 10)
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white.opacity(0.9), lineWidth: 1)
+                            )
+                            .shadow(color: Color.black.opacity(0.15), radius: 1, x: 0, y: 0)
+                        Text(container.name)
+                            .font(.headline)
                     }
-                    if let ip = container.ipAddress {
-                        Label(ip, systemImage: "network")
-                            .font(.caption)
+                    HStack(spacing: 16) {
+                        if let image = container.image {
+                            Label(image, systemImage: "shippingbox")
+                                .font(.caption)
+                        }
+                        if let ip = container.ipAddress {
+                            Label(ip, systemImage: "network")
+                                .font(.caption)
+                        }
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
-            Spacer()
+            .buttonStyle(.plain)
             HStack(spacing: 12) {
                 ZStack {
                     if containerManager.updatingContainerIDs.contains(container.id) {
