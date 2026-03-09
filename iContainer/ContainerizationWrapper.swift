@@ -257,6 +257,15 @@ class ContainerizationWrapper: ObservableObject {
         }
         return nil
     }
+
+    func inspectContainerRaw(containerId: String) async -> String? {
+        do {
+            return try await runCommand(["inspect", containerId])
+        } catch {
+            logger.error("Errore nell'ispezione raw del container: \(error)")
+            return nil
+        }
+    }
 }
 
 private extension ContainerizationWrapper {

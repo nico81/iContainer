@@ -49,6 +49,7 @@ struct ImageRowView: View {
     @EnvironmentObject var containerManager: ContainerizationWrapper
     @State private var showingDeleteConfirmation = false
     @State private var isDeleting = false
+    @State private var rowInspectDetails: ImageInspectDetails?
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
@@ -59,11 +60,14 @@ struct ImageRowView: View {
                     Text(image.displayName)
                         .font(.headline)
                     HStack(spacing: 16) {
-                        Label(image.displaySize, systemImage: "externaldrive")
+                        Text(rowInspectDetails?.variantsTotalText ?? image.displaySize)
                             .font(.caption)
-                        Text(image.displayCreated)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        let created = image.displayCreated
+                        if created != "-" {
+                            Text(created)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -98,6 +102,14 @@ struct ImageRowView: View {
         } message: {
             Text("Delete image \"\(image.displayName)\"? This may affect containers using it.")
         }
+        .task(id: image.id) {
+            let reference = image.reference.isEmpty ? image.id : image.reference
+            if let output = await containerManager.inspectImage(reference: reference) {
+                rowInspectDetails = parseInspectDetails(output)
+            } else {
+                rowInspectDetails = nil
+            }
+        }
     }
 }
 
@@ -127,23 +139,23 @@ struct ImageDetailView: View {
                     }
 
                     DetailSection(title: "Image Information", icon: "shippingbox") {
-                        DetailRow(label: "Size", value: inspectDetails?.sizeText ?? image.displaySize)
+                        DetailRow(label: "Reference", value: inspectDetails?.reference ?? image.reference)
+                        DetailRow(label: "Digest", value: inspectDetails?.digest ?? image.id)
+                        DetailRow(label: "Media Type", value: inspectDetails?.mediaType ?? "-")
+                        DetailRow(label: "OS/Arch", value: inspectDetails?.platform ?? "-")
                         DetailRow(label: "Created", value: inspectDetails?.created ?? image.displayCreated)
-                    }
-
-                    if let inspectDetails {
-                        DetailSection(title: "Inspect Details", icon: "info.circle") {
-                            DetailRow(label: "Reference", value: inspectDetails.reference ?? "-")
-                            DetailRow(label: "Digest", value: inspectDetails.digest ?? "-")
-                            DetailRow(label: "Created", value: inspectDetails.created ?? "-")
-                            DetailRow(label: "Size", value: inspectDetails.sizeText ?? "-")
-                            DetailRow(label: "OS/Arch", value: inspectDetails.platform ?? "-")
-                            DetailRow(label: "Media Type", value: inspectDetails.mediaType ?? "-")
+                        let onDisk = image.displaySize == "-" ? (inspectDetails?.variantsTotalText ?? "-") : image.displaySize
+                        DetailRow(label: "On Disk", value: onDisk)
+                        if let indexSize = inspectDetails?.indexSizeText {
+                            DetailRow(label: "Index Size", value: indexSize)
+                        }
+                        if let variantsSize = inspectDetails?.variantsTotalText {
+                            DetailRow(label: "Variants Total", value: variantsSize)
                         }
                     }
 
                     DetailSection(title: "Raw Inspect Output", icon: "terminal") {
-                        Text(rawDetailsText.isEmpty ? "No details available." : rawDetailsText)
+                        Text(formattedInspectOutput)
                             .font(.caption.monospaced())
                             .textSelection(.enabled)
                             .foregroundColor(.secondary)
@@ -170,13 +182,27 @@ struct ImageDetailView: View {
         }
         isLoading = false
     }
+
+    private var formattedInspectOutput: String {
+        let trimmed = rawDetailsText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "No details available." }
+        guard let data = trimmed.data(using: .utf8) else { return trimmed }
+        do {
+            let json = try JSONSerialization.jsonObject(with: data, options: [])
+            let pretty = try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys])
+            return String(data: pretty, encoding: .utf8) ?? trimmed
+        } catch {
+            return trimmed
+        }
+    }
 }
 
 private struct ImageInspectDetails: Equatable {
     let reference: String?
     let digest: String?
     let created: String?
-    let sizeText: String?
+    let indexSizeText: String?
+    let variantsTotalText: String?
     let platform: String?
     let mediaType: String?
 }
@@ -207,23 +233,26 @@ private func parseInspectDetails(_ raw: String) -> ImageInspectDetails? {
             ?? stringIn(descriptor ?? [:], keys: ["mediaType"])
             ?? stringIn(dict, keys: ["mediaType"])
         let created = stringIn(annotations ?? [:], keys: ["org.opencontainers.image.created"])
+            ?? createdFromVariants(variants)
             ?? deepString(in: dict, keys: ["created", "createdAt", "created_at"])
             ?? deepString(in: dict, keys: ["config", "created"])
 
-        let sizeBytes = numberFromIndexOrVariant(index: index, variants: variants)
-        let sizeText: String?
-        if let sizeBytes {
-            sizeText = ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file)
-        } else {
-            sizeText = stringIn(dict, keys: ["fullSize", "size", "sizeText", "sizeHuman"])
-        }
+        let indexSizeBytes = (index?["size"] as? NSNumber)?.int64Value
+        let variantsTotalBytes = totalVariantsSizeBytes(variants)
+        let indexSizeText = indexSizeBytes != nil
+            ? ByteCountFormatter.string(fromByteCount: indexSizeBytes!, countStyle: .file)
+            : nil
+        let variantsTotalText = variantsTotalBytes != nil
+            ? ByteCountFormatter.string(fromByteCount: variantsTotalBytes!, countStyle: .file)
+            : nil
 
         let platform = platformFromVariants(variants)
         return ImageInspectDetails(
             reference: reference,
             digest: digest,
             created: created,
-            sizeText: sizeText,
+            indexSizeText: indexSizeText,
+            variantsTotalText: variantsTotalText,
             platform: platform,
             mediaType: mediaType
         )
@@ -314,4 +343,26 @@ private func platformFromVariants(_ variants: [[String: Any]]) -> String? {
         }
     }
     return nil
+}
+
+private func createdFromVariants(_ variants: [[String: Any]]) -> String? {
+    for variant in variants {
+        if let config = variant["config"] as? [String: Any],
+           let created = config["created"] as? String {
+            return created
+        }
+    }
+    return nil
+}
+
+private func totalVariantsSizeBytes(_ variants: [[String: Any]]) -> Int64? {
+    var total: Int64 = 0
+    var found = false
+    for variant in variants {
+        if let size = variant["size"] as? NSNumber {
+            total += size.int64Value
+            found = true
+        }
+    }
+    return found ? total : nil
 }

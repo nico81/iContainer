@@ -15,17 +15,18 @@ struct ContainerImage: Identifiable, Equatable {
     var displayName: String {
         let ref = reference
         if !ref.isEmpty {
-            return ref
+            return Self.shortName(from: ref)
         }
-        return name.isEmpty ? id : name
+        let fallback = name.isEmpty ? id : name
+        return Self.shortName(from: fallback)
     }
 
     var displaySize: String {
-        if let sizeBytes {
-            return ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file)
-        }
         if let sizeText, !sizeText.isEmpty {
             return sizeText
+        }
+        if let sizeBytes {
+            return ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file)
         }
         return "-"
     }
@@ -40,5 +41,12 @@ struct ContainerImage: Identifiable, Equatable {
             return "\(name):\(tag)"
         }
         return name
+    }
+
+    static func shortName(from reference: String) -> String {
+        let trimmed = reference.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        let parts = trimmed.split(separator: "/")
+        return String(parts.last ?? Substring(trimmed))
     }
 }
