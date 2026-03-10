@@ -7,153 +7,39 @@ struct ContainerDetailView: View {
     @State private var isLoading = true
     @State private var rawInspectText: String = ""
     @State private var fallback: ContainerInspectFallback?
+    @State private var selectedTab: Int = 0
 
     var body: some View {
-        ScrollView {
-            if isLoading {
-                ProgressView("Loading Details...")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(.top, 50)
-            } else if let details = details {
-                VStack(alignment: .leading, spacing: 24) {
-                    // Header Section
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text(details.name)
-                                .font(.largeTitle)
-                                .fontWeight(.bold)
-                            Spacer()
-                            StatusBadge(status: details.status ?? "unknown")
-                        }
-                        Text("ID: \(details.configuration?.id ?? "-")")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .monospaced()
-                    }
-                    .padding(.bottom, 8)
-
-                    // Basic Info
-                    DetailSection(title: "Basic Information", icon: "info.circle") {
-                        DetailRow(label: "Image", value: details.configuration?.image?.reference ?? fallback?.image ?? "-")
-                        DetailRow(label: "Command", value: details.command != "-" ? details.command : (fallback?.command ?? "-"), isMonospaced: true)
-                        if let resources = fallback?.resources {
-                            if let cpus = resources.cpus {
-                                DetailRow(label: "CPUs", value: "\(cpus)")
-                            }
-                            if let memoryBytes = resources.memoryBytes {
-                                DetailRow(label: "Memory", value: ByteCountFormatter.string(fromByteCount: memoryBytes, countStyle: .memory))
-                            }
-                        }
-                        if let created = fallback?.created {
-                            DetailRow(label: "Created", value: created)
-                        }
-                        if let workingDir = fallback?.workingDir {
-                            DetailRow(label: "Working Dir", value: workingDir, isMonospaced: true)
-                        }
-                        if let platform = fallback?.platform {
-                            DetailRow(label: "Platform", value: platform)
-                        }
-                        if let runtime = fallback?.runtimeHandler {
-                            DetailRow(label: "Runtime", value: runtime)
-                        }
-                        if let rosetta = fallback?.rosetta {
-                            DetailRow(label: "Rosetta", value: rosetta ? "Enabled" : "Disabled")
-                        }
-                        if let ssh = fallback?.ssh {
-                            DetailRow(label: "SSH", value: ssh ? "Enabled" : "Disabled")
-                        }
-                        if let readOnly = fallback?.readOnly {
-                            DetailRow(label: "Read Only FS", value: readOnly ? "Yes" : "No")
-                        }
-                    }
-
-                    // Network
-                    DetailSection(title: "Network", icon: "network") {
-                        DetailRow(label: "IPv4", value: details.networks?.first?.address ?? fallback?.ipv4Address ?? "-")
-                        DetailRow(label: "IPv4 Gateway", value: fallback?.ipv4Gateway ?? "-")
-                        DetailRow(label: "IPv6", value: fallback?.ipv6Address ?? "-")
-                        DetailRow(label: "MAC", value: fallback?.macAddress ?? "-")
-                        let ports = !details.portBindings.isEmpty ? details.portBindings : (fallback?.ports ?? [])
-                        DetailRow(label: "Ports", value: ports.isEmpty ? "None" : ports.joined(separator: ", "))
-                        if let hostname = fallback?.hostname {
-                            DetailRow(label: "Hostname", value: hostname)
-                        }
-                    }
-
-                    // Mounts
-                    DetailSection(title: "Mounts", icon: "externaldrive") {
-                        let mounts = details.configuration?.mounts
-                        if let mounts, !mounts.isEmpty {
-                            ForEach(mounts, id: \.self) { mount in
-                                DetailRow(label: mount.source ?? "-", value: mount.destination ?? "-")
-                            }
-                        } else if let fallbackMounts = fallback?.mounts, !fallbackMounts.isEmpty {
-                            ForEach(fallbackMounts, id: \.self) { mount in
-                                DetailRow(label: mount.source, value: mount.destination)
-                            }
-                        } else {
-                            Text("No volumes mounted.")
-                                .foregroundColor(.secondary)
-                                .font(.subheadline)
-                        }
-                    }
-
-                    // Environment
-                    DetailSection(title: "Environment Variables", icon: "scroll") {
-                        let env = details.configuration?.initProcess?.environment ?? fallback?.environment ?? []
-                        if !env.isEmpty {
-                            ForEach(env, id: \.self) { envVar in
-                                let parts = envVar.split(separator: "=", maxSplits: 1)
-                                if parts.count == 2 {
-                                    DetailRow(label: String(parts[0]), value: String(parts[1]), isMonospaced: true)
-                                } else {
-                                    Text(envVar)
-                                        .font(.caption)
-                                        .monospaced()
-                                }
-                            }
-                        } else {
-                            Text("No environment variables set.")
-                                .foregroundColor(.secondary)
-                                .font(.subheadline)
-                        }
-                    }
-
-                    if let dns = fallback?.dns {
-                        DetailSection(title: "DNS", icon: "globe") {
-                            if let domain = dns.domain {
-                                DetailRow(label: "Domain", value: domain)
-                            }
-                            if !dns.nameservers.isEmpty {
-                                DetailRow(label: "Nameservers", value: dns.nameservers.joined(separator: ", "))
-                            }
-                            if !dns.searchDomains.isEmpty {
-                                DetailRow(label: "Search", value: dns.searchDomains.joined(separator: ", "))
-                            }
-                            if !dns.options.isEmpty {
-                                DetailRow(label: "Options", value: dns.options.joined(separator: ", "))
-                            }
-                        }
-                    }
-
-                    DetailSection(title: "Raw Inspect Output", icon: "terminal") {
-                        Text(formattedInspectOutput)
-                            .font(.caption.monospaced())
-                            .textSelection(.enabled)
-                            .foregroundColor(.secondary)
-                    }
+        VStack(spacing: 0) {
+            HStack {
+                Spacer()
+                Picker("", selection: $selectedTab) {
+                    Text("Info").tag(0)
+                    Text("Stats").tag(1)
+                    Text("Logs").tag(2)
                 }
-                .padding()
-            } else {
-                VStack(spacing: 16) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.largeTitle)
-                        .foregroundColor(.orange)
-                    Text("Could not load container details.")
-                        .font(.headline)
+                .pickerStyle(.segmented)
+                .frame(width: 200)
+            }
+            .padding(.horizontal)
+            .padding(.top, 8)
+
+            Group {
+                if selectedTab == 0 {
+                    ContainerInfoView(
+                        details: details,
+                        fallback: fallback,
+                        isLoading: isLoading,
+                        formattedInspectOutput: formattedInspectOutput
+                    )
+                } else if selectedTab == 1 {
+                    ContainerStatsView(details: details, containerId: containerId)
+                } else {
+                    ContainerLogsView(
+                        details: details,
+                        containerId: containerId
+                    )
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(.top, 50)
             }
         }
         .navigationTitle(details?.name ?? "Details")
@@ -222,6 +108,533 @@ struct ContainerDetailView: View {
             return trimmed
         }
     }
+}
+
+private struct ContainerInfoView: View {
+    let details: ContainerDetails?
+    let fallback: ContainerInspectFallback?
+    let isLoading: Bool
+    let formattedInspectOutput: String
+
+    var body: some View {
+        ScrollView {
+            if isLoading {
+                ProgressView("Loading Details...")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.top, 50)
+            } else if let details = details {
+                VStack(alignment: .leading, spacing: 24) {
+                    ContainerHeaderView(details: details)
+
+                    DetailSection(title: "Basic Information", icon: "info.circle") {
+                        DetailRow(label: "Image", value: details.configuration?.image?.reference ?? fallback?.image ?? "-")
+                        DetailRow(label: "Command", value: details.command != "-" ? details.command : (fallback?.command ?? "-"), isMonospaced: true)
+                        if let resources = fallback?.resources {
+                            if let cpus = resources.cpus {
+                                DetailRow(label: "CPUs", value: "\(cpus)")
+                            }
+                            if let memoryBytes = resources.memoryBytes {
+                                DetailRow(label: "Memory", value: ByteCountFormatter.string(fromByteCount: memoryBytes, countStyle: .memory))
+                            }
+                        }
+                        if let created = fallback?.created {
+                            DetailRow(label: "Created", value: created)
+                        }
+                        if let workingDir = fallback?.workingDir {
+                            DetailRow(label: "Working Dir", value: workingDir, isMonospaced: true)
+                        }
+                        if let platform = fallback?.platform {
+                            DetailRow(label: "Platform", value: platform)
+                        }
+                        if let runtime = fallback?.runtimeHandler {
+                            DetailRow(label: "Runtime", value: runtime)
+                        }
+                        if let rosetta = fallback?.rosetta {
+                            DetailRow(label: "Rosetta", value: rosetta ? "Enabled" : "Disabled")
+                        }
+                        if let ssh = fallback?.ssh {
+                            DetailRow(label: "SSH", value: ssh ? "Enabled" : "Disabled")
+                        }
+                        if let readOnly = fallback?.readOnly {
+                            DetailRow(label: "Read Only FS", value: readOnly ? "Yes" : "No")
+                        }
+                    }
+
+                    DetailSection(title: "Network", icon: "network") {
+                        DetailRow(label: "IPv4", value: details.networks?.first?.address ?? fallback?.ipv4Address ?? "-")
+                        DetailRow(label: "IPv4 Gateway", value: fallback?.ipv4Gateway ?? "-")
+                        DetailRow(label: "IPv6", value: fallback?.ipv6Address ?? "-")
+                        DetailRow(label: "MAC", value: fallback?.macAddress ?? "-")
+                        let ports = !details.portBindings.isEmpty ? details.portBindings : (fallback?.ports ?? [])
+                        DetailRow(label: "Ports", value: ports.isEmpty ? "None" : ports.joined(separator: ", "))
+                        if let hostname = fallback?.hostname {
+                            DetailRow(label: "Hostname", value: hostname)
+                        }
+                    }
+
+                    DetailSection(title: "Mounts", icon: "externaldrive") {
+                        let mounts = details.configuration?.mounts
+                        if let mounts, !mounts.isEmpty {
+                            ForEach(mounts, id: \.self) { mount in
+                                DetailRow(label: mount.source ?? "-", value: mount.destination ?? "-")
+                            }
+                        } else if let fallbackMounts = fallback?.mounts, !fallbackMounts.isEmpty {
+                            ForEach(fallbackMounts, id: \.self) { mount in
+                                DetailRow(label: mount.source, value: mount.destination)
+                            }
+                        } else {
+                            Text("No volumes mounted.")
+                                .foregroundColor(.secondary)
+                                .font(.subheadline)
+                        }
+                    }
+
+                    DetailSection(title: "Environment Variables", icon: "scroll") {
+                        let env = details.configuration?.initProcess?.environment ?? fallback?.environment ?? []
+                        if !env.isEmpty {
+                            ForEach(env, id: \.self) { envVar in
+                                let parts = envVar.split(separator: "=", maxSplits: 1)
+                                if parts.count == 2 {
+                                    DetailRow(label: String(parts[0]), value: String(parts[1]), isMonospaced: true)
+                                } else {
+                                    Text(envVar)
+                                        .font(.caption)
+                                        .monospaced()
+                                }
+                            }
+                        } else {
+                            Text("No environment variables set.")
+                                .foregroundColor(.secondary)
+                                .font(.subheadline)
+                        }
+                    }
+
+                    if let dns = fallback?.dns {
+                        DetailSection(title: "DNS", icon: "globe") {
+                            if let domain = dns.domain {
+                                DetailRow(label: "Domain", value: domain)
+                            }
+                            if !dns.nameservers.isEmpty {
+                                DetailRow(label: "Nameservers", value: dns.nameservers.joined(separator: ", "))
+                            }
+                            if !dns.searchDomains.isEmpty {
+                                DetailRow(label: "Search", value: dns.searchDomains.joined(separator: ", "))
+                            }
+                            if !dns.options.isEmpty {
+                                DetailRow(label: "Options", value: dns.options.joined(separator: ", "))
+                            }
+                        }
+                    }
+
+                    DetailSection(title: "Raw Inspect Output", icon: "terminal") {
+                        Text(formattedInspectOutput)
+                            .font(.caption.monospaced())
+                            .textSelection(.enabled)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding()
+            } else {
+                VStack(spacing: 16) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.largeTitle)
+                        .foregroundColor(.orange)
+                    Text("Could not load container details.")
+                        .font(.headline)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.top, 50)
+            }
+        }
+    }
+}
+
+private struct ContainerHeaderView: View {
+    let details: ContainerDetails
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(details.name)
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                Spacer()
+                StatusBadge(status: details.status ?? "unknown")
+            }
+            Text("ID: \(details.configuration?.id ?? "-")")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .monospaced()
+        }
+        .padding(.bottom, 8)
+    }
+}
+
+private struct ContainerLogsView: View {
+    let details: ContainerDetails?
+    let containerId: String
+    @EnvironmentObject var containerManager: ContainerizationWrapper
+    @State private var logsText: String = ""
+    @State private var isLoadingLogs = false
+    @State private var autoRefresh = true
+    @State private var autoScroll = true
+    @State private var filterText = ""
+    @State private var lastClearDate: Date = .distantPast
+    @State private var lastSnapshotLines: [String] = []
+    @State private var refreshTask: Task<Void, Never>?
+    private let tailLines: Int = 200
+
+    private let refreshIntervalNanos: UInt64 = 3_000_000_000
+
+    var body: some View {
+        GeometryReader { proxy in
+            let logAreaHeight = max(240, proxy.size.height - 220)
+            VStack(alignment: .leading, spacing: 24) {
+                if let details = details {
+                    ContainerHeaderView(details: details)
+                } else {
+                    ProgressView("Loading Details...")
+                        .padding(.top, 12)
+                }
+                DetailSection(title: "Logs", icon: "doc.plaintext") {
+                    VStack(spacing: 12) {
+                        HStack(spacing: 12) {
+                            TextField("Filter", text: $filterText)
+                                .textFieldStyle(.roundedBorder)
+                            Toggle("Auto Refresh", isOn: $autoRefresh)
+                                .toggleStyle(.switch)
+                            Toggle("Auto Scroll", isOn: $autoScroll)
+                                .toggleStyle(.switch)
+                            Button("Refresh") {
+                                Task { await refreshLogs() }
+                            }
+                            Button("Clear") {
+                                logsText = ""
+                                lastClearDate = Date()
+                                lastSnapshotLines.removeAll()
+                            }
+                            Button("Copy") {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(filteredLogs, forType: .string)
+                            }
+                        }
+
+                        ScrollViewReader { proxy in
+                            ScrollView {
+                                Text(filteredLogs.isEmpty ? "No logs yet." : filteredLogs)
+                                    .font(.caption.monospaced())
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                Color.clear
+                                    .frame(height: 1)
+                                    .id("BOTTOM")
+                            }
+                            .frame(height: logAreaHeight)
+                            .onChange(of: logsText) { _, _ in
+                                if autoScroll {
+                                    proxy.scrollTo("BOTTOM", anchor: .bottom)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .padding()
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .onAppear { startAutoRefresh() }
+        .onDisappear { stopAutoRefresh() }
+    }
+
+    private var filteredLogs: String {
+        let trimmed = filterText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return logsText }
+        return logsText
+            .components(separatedBy: .newlines)
+            .filter { $0.localizedCaseInsensitiveContains(trimmed) }
+            .joined(separator: "\n")
+    }
+
+    private func startAutoRefresh() {
+        stopAutoRefresh()
+        refreshTask = Task {
+            while !Task.isCancelled {
+                if autoRefresh {
+                    await refreshLogs()
+                }
+                try? await Task.sleep(nanoseconds: refreshIntervalNanos)
+            }
+        }
+    }
+
+    private func stopAutoRefresh() {
+        refreshTask?.cancel()
+        refreshTask = nil
+    }
+
+    private func refreshLogs() async {
+        isLoadingLogs = true
+        if let output = await containerManager.fetchContainerLogs(containerId: containerId, tail: tailLines) {
+            let cleaned = output.trimmingCharacters(in: .whitespacesAndNewlines)
+            let lines = cleaned
+                .components(separatedBy: .newlines)
+                .filter { !$0.isEmpty }
+                .filter { line in
+                    lineTimestamp(line) >= lastClearDate
+                }
+            if lastSnapshotLines.isEmpty && logsText.isEmpty {
+                lastSnapshotLines = lines
+                return
+            }
+            let delta = deltaLines(previous: lastSnapshotLines, current: lines)
+            if !delta.isEmpty {
+                if logsText.isEmpty {
+                    logsText = delta.joined(separator: "\n")
+                } else {
+                    logsText += "\n" + delta.joined(separator: "\n")
+                }
+            }
+            lastSnapshotLines = lines
+        } else {
+            logsText = "No logs available."
+        }
+        isLoadingLogs = false
+    }
+
+    private func deltaLines(previous: [String], current: [String]) -> [String] {
+        let prefixCount = commonPrefixCount(previous, current)
+        if prefixCount < current.count {
+            return Array(current.dropFirst(prefixCount))
+        }
+        return []
+    }
+
+    private func commonPrefixCount(_ a: [String], _ b: [String]) -> Int {
+        let count = min(a.count, b.count)
+        var idx = 0
+        while idx < count, a[idx] == b[idx] {
+            idx += 1
+        }
+        return idx
+    }
+
+    private func lineTimestamp(_ line: String) -> Date {
+        if let parsed = parseRFC3339(line) {
+            return parsed
+        }
+        return lastClearDate
+    }
+
+    private func parseRFC3339(_ line: String) -> Date? {
+        let pattern = #"^\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\s"#
+        guard let match = line.range(of: pattern, options: .regularExpression) else {
+            return nil
+        }
+        let token = String(line[match]).trimmingCharacters(in: .whitespaces)
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = iso.date(from: token) {
+            return date
+        }
+        let isoNoFrac = ISO8601DateFormatter()
+        isoNoFrac.formatOptions = [.withInternetDateTime]
+        return isoNoFrac.date(from: token)
+    }
+}
+
+private struct ContainerStatsView: View {
+    let details: ContainerDetails?
+    let containerId: String
+    @EnvironmentObject var containerManager: ContainerizationWrapper
+    @State private var stats: ContainerStats?
+    @State private var isLoading = false
+    @State private var autoRefresh = true
+    @State private var refreshTask: Task<Void, Never>?
+
+    private let refreshIntervalNanos: UInt64 = 3_000_000_000
+
+    var body: some View {
+        ScrollView {
+            if let details = details {
+                VStack(alignment: .leading, spacing: 24) {
+                    ContainerHeaderView(details: details)
+                    DetailSection(title: "Resource Stats", icon: "speedometer") {
+                        if let stats = stats {
+                            DetailRow(label: "CPU %", value: stats.cpuPercent)
+                            DetailRow(label: "Memory Usage", value: stats.memoryUsage)
+                            DetailRow(label: "Net Rx/Tx", value: stats.netRxTx)
+                            DetailRow(label: "Block I/O", value: stats.blockIo)
+                            DetailRow(label: "Pids", value: stats.pids)
+                        } else if isLoading {
+                            ProgressView("Loading Stats...")
+                        } else {
+                            Text("No stats available.")
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                .padding()
+            } else {
+                ProgressView("Loading Details...")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.top, 50)
+            }
+        }
+        .onAppear { startAutoRefresh() }
+        .onDisappear { stopAutoRefresh() }
+    }
+
+    private func startAutoRefresh() {
+        stopAutoRefresh()
+        refreshTask = Task {
+            while !Task.isCancelled {
+                if autoRefresh {
+                    await refreshStats()
+                }
+                try? await Task.sleep(nanoseconds: refreshIntervalNanos)
+            }
+        }
+    }
+
+    private func stopAutoRefresh() {
+        refreshTask?.cancel()
+        refreshTask = nil
+    }
+
+    private func refreshStats() async {
+        isLoading = true
+        if let output = await containerManager.fetchContainerStats(containerId: containerId) {
+            stats = parseContainerStats(output)
+        } else {
+            stats = nil
+        }
+        isLoading = false
+    }
+}
+
+private struct ContainerStats: Equatable {
+    let cpuPercent: String
+    let memoryUsage: String
+    let pids: String
+    let netRxTx: String
+    let blockIo: String
+}
+
+private func parseContainerStats(_ output: String) -> ContainerStats? {
+    let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return nil }
+    if let data = trimmed.data(using: .utf8),
+       let json = try? JSONSerialization.jsonObject(with: data, options: []) {
+        if let array = json as? [[String: Any]], let first = array.first {
+            return statsFromDict(first)
+        } else if let dict = json as? [String: Any] {
+            return statsFromDict(dict)
+        }
+    }
+    return statsFromTable(trimmed)
+}
+
+private func statsFromDict(_ dict: [String: Any]) -> ContainerStats? {
+    let cpu = stringIn(dict, keys: ["cpu", "cpuPercent", "cpu_percent", "cpuPct"]) ?? "-"
+    let memUsageBytes = int64In(dict, keys: ["memoryUsageBytes", "memUsageBytes"])
+    let memLimitBytes = int64In(dict, keys: ["memoryLimitBytes", "memLimitBytes"])
+    let memUsage = formatUsageAndLimit(usageBytes: memUsageBytes, limitBytes: memLimitBytes)
+        ?? stringIn(dict, keys: ["memUsage", "memoryUsage", "mem_usage", "memory"])
+        ?? "-"
+    let pids = stringIn(dict, keys: ["pids", "numProcesses", "processes"]) ?? "-"
+    let netRxBytes = int64In(dict, keys: ["networkRxBytes", "netRxBytes", "rxBytes"])
+    let netTxBytes = int64In(dict, keys: ["networkTxBytes", "netTxBytes", "txBytes"])
+    let netRxTx = formatRxTx(rxBytes: netRxBytes, txBytes: netTxBytes)
+        ?? stringIn(dict, keys: ["netRx", "networkRx", "rx", "net_rx"])
+        ?? "-"
+    let blkReadBytes = int64In(dict, keys: ["blockReadBytes", "blkReadBytes", "readBytes"])
+    let blkWriteBytes = int64In(dict, keys: ["blockWriteBytes", "blkWriteBytes", "writeBytes"])
+    let blockIo = formatRxTx(rxBytes: blkReadBytes, txBytes: blkWriteBytes)
+        ?? stringIn(dict, keys: ["blockRead", "blkRead", "block_read"])
+        ?? "-"
+    return ContainerStats(
+        cpuPercent: cpu,
+        memoryUsage: memUsage,
+        pids: pids,
+        netRxTx: netRxTx,
+        blockIo: blockIo
+    )
+}
+
+private func statsFromTable(_ output: String) -> ContainerStats? {
+    let lines = output.components(separatedBy: .newlines).filter { !$0.isEmpty }
+    guard lines.count >= 2 else { return nil }
+    let header = lines[0]
+    let valueLine = lines[1]
+    let columnNames = ["Container ID", "Cpu %", "Memory Usage", "Net Rx/Tx", "Block I/O", "Pids"]
+    let ranges = columnRanges(in: header, columns: columnNames)
+    guard !ranges.isEmpty else { return nil }
+    var map: [String: String] = [:]
+    for (name, range) in ranges {
+        let value = substring(valueLine, startOffset: range.start, endOffset: range.end)
+            .trimmingCharacters(in: .whitespaces)
+        map[name.lowercased()] = value
+    }
+    let cpu = map["cpu %"] ?? map["cpu%"] ?? "-"
+    let mem = map["memory usage"] ?? map["memusage"] ?? "-"
+    let net = map["net rx/tx"] ?? map["netrx/tx"] ?? "-"
+    let block = map["block i/o"] ?? map["block i/o"] ?? "-"
+    let pids = map["pids"] ?? "-"
+    return ContainerStats(
+        cpuPercent: cpu,
+        memoryUsage: mem,
+        pids: pids,
+        netRxTx: net,
+        blockIo: block
+    )
+}
+
+private struct ColumnRange {
+    let start: Int
+    let end: Int
+}
+
+private func columnRanges(in header: String, columns: [String]) -> [String: ColumnRange] {
+    var starts: [(name: String, offset: Int)] = []
+    for name in columns {
+        if let range = header.range(of: name) {
+            let offset = header.distance(from: header.startIndex, to: range.lowerBound)
+            starts.append((name, offset))
+        }
+    }
+    let sorted = starts.sorted { $0.offset < $1.offset }
+    var result: [String: ColumnRange] = [:]
+    for (idx, item) in sorted.enumerated() {
+        let start = item.offset
+        let end = (idx + 1 < sorted.count) ? sorted[idx + 1].offset : header.count
+        result[item.name] = ColumnRange(start: start, end: end)
+    }
+    return result
+}
+
+private func substring(_ text: String, startOffset: Int, endOffset: Int) -> String {
+    let safeStart = max(0, min(startOffset, text.count))
+    let safeEnd = max(safeStart, min(endOffset, text.count))
+    let startIndex = text.index(text.startIndex, offsetBy: safeStart)
+    let endIndex = text.index(text.startIndex, offsetBy: safeEnd)
+    return String(text[startIndex..<endIndex])
+}
+
+private func formatUsageAndLimit(usageBytes: Int64?, limitBytes: Int64?) -> String? {
+    guard let usageBytes else { return nil }
+    let usage = ByteCountFormatter.string(fromByteCount: usageBytes, countStyle: .memory)
+    if let limitBytes {
+        let limit = ByteCountFormatter.string(fromByteCount: limitBytes, countStyle: .memory)
+        return "\(usage) / \(limit)"
+    }
+    return usage
+}
+
+private func formatRxTx(rxBytes: Int64?, txBytes: Int64?) -> String? {
+    guard let rxBytes, let txBytes else { return nil }
+    let rx = ByteCountFormatter.string(fromByteCount: rxBytes, countStyle: .file)
+    let tx = ByteCountFormatter.string(fromByteCount: txBytes, countStyle: .file)
+    return "\(rx) / \(tx)"
 }
 
 private struct ContainerInspectFallback: Hashable {

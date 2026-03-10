@@ -266,6 +266,45 @@ class ContainerizationWrapper: ObservableObject {
             return nil
         }
     }
+
+    func fetchContainerLogs(containerId: String, tail: Int? = nil) async -> String? {
+        let tailArgs: [String]
+        if let tail {
+            tailArgs = ["--tail", "\(tail)"]
+        } else {
+            tailArgs = []
+        }
+        let commandOptions: [[String]] = [
+            ["logs"] + tailArgs + [containerId],
+            ["logs"] + (tail != nil ? [] : ["-n", "200"]) + [containerId],
+            ["logs"] + ["-n", "\(tail ?? 200)"] + [containerId],
+            ["logs"] + ["--tail", "\(tail ?? 200)"] + [containerId],
+            ["log"] + tailArgs + [containerId]
+        ]
+        for args in commandOptions {
+            do {
+                return try await runCommand(args)
+            } catch {
+                continue
+            }
+        }
+        return nil
+    }
+
+    func fetchContainerStats(containerId: String) async -> String? {
+        let commandOptions: [[String]] = [
+            ["stats", "--no-stream", containerId],
+            ["stats", "--format", "json", "--no-stream", containerId]
+        ]
+        for args in commandOptions {
+            do {
+                return try await runCommand(args)
+            } catch {
+                continue
+            }
+        }
+        return nil
+    }
 }
 
 private extension ContainerizationWrapper {
