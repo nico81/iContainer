@@ -223,68 +223,72 @@ private struct ContainerInfoView: View {
                             }
                         }
 
-                        DetailSection(title: "Network", icon: "network") {
-                            DetailRow(label: "IPv4", value: details.networks?.first?.address ?? fallback?.ipv4Address ?? "-")
-                            DetailRow(label: "IPv4 Gateway", value: fallback?.ipv4Gateway ?? "-")
-                            DetailRow(label: "IPv6", value: fallback?.ipv6Address ?? "-")
-                            DetailRow(label: "MAC", value: fallback?.macAddress ?? "-")
-                            let ports = !details.portBindings.isEmpty ? details.portBindings : (fallback?.ports ?? [])
-                            DetailRow(label: "Ports", value: ports.isEmpty ? "None" : ports.joined(separator: ", "))
-                            if let hostname = fallback?.hostname {
-                                DetailRow(label: "Hostname", value: hostname)
-                            }
-                        }
-
-                        DetailSection(title: "Mounts", icon: "externaldrive") {
-                            let mounts = details.configuration?.mounts
-                            if let mounts, !mounts.isEmpty {
-                                ForEach(mounts, id: \.self) { mount in
-                                    DetailRow(label: mount.source ?? "-", value: mount.destination ?? "-")
+                        VStack(alignment: .leading, spacing: 16) {
+                            DetailSection(title: "Network", icon: "network") {
+                                DetailRow(label: "IPv4", value: details.networks?.first?.address ?? fallback?.ipv4Address ?? "-")
+                                DetailRow(label: "IPv4 Gateway", value: fallback?.ipv4Gateway ?? "-")
+                                DetailRow(label: "IPv6", value: fallback?.ipv6Address ?? "-")
+                                DetailRow(label: "MAC", value: fallback?.macAddress ?? "-")
+                                let ports = !details.portBindings.isEmpty ? details.portBindings : (fallback?.ports ?? [])
+                                DetailRow(label: "Ports", value: ports.isEmpty ? "None" : ports.joined(separator: ", "))
+                                if let hostname = fallback?.hostname {
+                                    DetailRow(label: "Hostname", value: hostname)
                                 }
-                            } else if let fallbackMounts = fallback?.mounts, !fallbackMounts.isEmpty {
-                                ForEach(fallbackMounts, id: \.self) { mount in
-                                    DetailRow(label: mount.source, value: mount.destination)
-                                }
-                            } else {
-                                Text("No volumes mounted.")
-                                    .foregroundColor(.secondary)
-                                    .font(.subheadline)
                             }
-                        }
 
-                        DetailSection(title: "Environment Variables", icon: "scroll") {
-                            let env = details.configuration?.initProcess?.environment ?? fallback?.environment ?? []
-                            if !env.isEmpty {
-                                ForEach(env, id: \.self) { envVar in
-                                    let parts = envVar.split(separator: "=", maxSplits: 1)
-                                    if parts.count == 2 {
-                                        DetailRow(label: String(parts[0]), value: String(parts[1]), isMonospaced: true)
-                                    } else {
-                                        Text(envVar)
-                                            .font(.caption)
-                                            .monospaced()
+                            if let dns = fallback?.dns {
+                                DetailSection(title: "DNS", icon: "globe") {
+                                    if let domain = dns.domain {
+                                        DetailRow(label: "Domain", value: domain)
+                                    }
+                                    if !dns.nameservers.isEmpty {
+                                        DetailRow(label: "Nameservers", value: dns.nameservers.joined(separator: ", "))
+                                    }
+                                    if !dns.searchDomains.isEmpty {
+                                        DetailRow(label: "Search", value: dns.searchDomains.joined(separator: ", "))
+                                    }
+                                    if !dns.options.isEmpty {
+                                        DetailRow(label: "Options", value: dns.options.joined(separator: ", "))
                                     }
                                 }
-                            } else {
-                                Text("No environment variables set.")
-                                    .foregroundColor(.secondary)
-                                    .font(.subheadline)
                             }
                         }
 
-                        if let dns = fallback?.dns {
-                            DetailSection(title: "DNS", icon: "globe") {
-                                if let domain = dns.domain {
-                                    DetailRow(label: "Domain", value: domain)
+                        VStack(alignment: .leading, spacing: 16) {
+                            DetailSection(title: "Mounts", icon: "externaldrive") {
+                                let mounts = details.configuration?.mounts
+                                if let mounts, !mounts.isEmpty {
+                                    ForEach(mounts, id: \.self) { mount in
+                                        DetailRow(label: mount.source ?? "-", value: mount.destination ?? "-")
+                                    }
+                                } else if let fallbackMounts = fallback?.mounts, !fallbackMounts.isEmpty {
+                                    ForEach(fallbackMounts, id: \.self) { mount in
+                                        DetailRow(label: mount.source, value: mount.destination)
+                                    }
+                                } else {
+                                    Text("No volumes mounted.")
+                                        .foregroundColor(.secondary)
+                                        .font(.subheadline)
                                 }
-                                if !dns.nameservers.isEmpty {
-                                    DetailRow(label: "Nameservers", value: dns.nameservers.joined(separator: ", "))
-                                }
-                                if !dns.searchDomains.isEmpty {
-                                    DetailRow(label: "Search", value: dns.searchDomains.joined(separator: ", "))
-                                }
-                                if !dns.options.isEmpty {
-                                    DetailRow(label: "Options", value: dns.options.joined(separator: ", "))
+                            }
+
+                            DetailSection(title: "Environment Variables", icon: "scroll") {
+                                let env = details.configuration?.initProcess?.environment ?? fallback?.environment ?? []
+                                if !env.isEmpty {
+                                    ForEach(env, id: \.self) { envVar in
+                                        let parts = envVar.split(separator: "=", maxSplits: 1)
+                                        if parts.count == 2 {
+                                            DetailRow(label: String(parts[0]), value: String(parts[1]), isMonospaced: true)
+                                        } else {
+                                            Text(envVar)
+                                                .font(.caption)
+                                                .monospaced()
+                                        }
+                                    }
+                                } else {
+                                    Text("No environment variables set.")
+                                        .foregroundColor(.secondary)
+                                        .font(.subheadline)
                                 }
                             }
                         }
