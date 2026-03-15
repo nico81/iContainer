@@ -305,6 +305,24 @@ class ContainerizationWrapper: ObservableObject {
         }
         return nil
     }
+
+    func execContainer(containerId: String, command: String) async -> String? {
+        let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let args = ["exec", containerId, "/bin/sh", "-c", trimmed]
+        let fallback = ["exec", containerId, "--", "/bin/sh", "-c", trimmed]
+        do {
+            return try await runCommand(args)
+        } catch {
+            do {
+                return try await runCommand(fallback)
+            } catch {
+                logger.error("Errore nell'esecuzione comando nel container: \(error)")
+                lastErrorMessage = error.localizedDescription
+                return nil
+            }
+        }
+    }
 }
 
 private extension ContainerizationWrapper {
@@ -388,7 +406,7 @@ enum DependencyError: Error, Identifiable {
     var description: String {
         switch self {
         case .cliMissing:
-            return "CLI tool 'container' not found at /usr/local/bin/container"
+            return "CLI tool 'container' not found at /usr/local/bin/container."
         }
     }
 }

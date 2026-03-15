@@ -10,6 +10,12 @@ struct ContentView: View {
     @State private var showingPullImageAlert = false
     @State private var pullImageReference = ""
     @State private var isPullingImage = false
+    @State private var showingExecSheet = false
+    @State private var execContainerId: String = ""
+    @State private var execCommand = "echo hello"
+    @State private var execOutput = ""
+    @State private var execIsRunning = false
+    @FocusState private var execCommandFocused: Bool
 
     var body: some View {
         if !containerManager.missingDependencies.isEmpty {
@@ -24,10 +30,15 @@ struct ContentView: View {
                 }
                 Section {
                     DisclosureGroup("Containers", isExpanded: $isContainersExpanded) {
-                        ForEach(containerManager.containers) { container in
-                            ContainerRowView(container: container)
-                        }
+                    ForEach(containerManager.containers) { container in
+                        ContainerRowView(
+                            container: container,
+                            showingExecSheet: $showingExecSheet,
+                            execContainerId: $execContainerId,
+                            execOutput: $execOutput
+                        )
                     }
+                }
                 }
                 Section {
                     DisclosureGroup(isExpanded: $isImagesExpanded) {
@@ -101,6 +112,42 @@ struct ContentView: View {
         } message: {
             Text("Enter the image reference to pull from the registry.")
         }
+        .sheet(isPresented: $showingExecSheet) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Execute Command")
+                    .font(.headline)
+                TextField("Command", text: $execCommand)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($execCommandFocused)
+                HStack {
+                    Button("Run") {
+                        runExecCommand()
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(execCommand.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || execIsRunning)
+                    if execIsRunning {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                    }
+                    Spacer()
+                    Button("Close") {
+                        showingExecSheet = false
+                    }
+                }
+                ScrollView {
+                    Text(execOutput.isEmpty ? "Output will appear here." : execOutput)
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(minHeight: 200)
+            }
+            .padding()
+            .frame(minWidth: 500, minHeight: 360)
+            .onAppear {
+                execCommandFocused = true
+            }
+        }
         .task {
             await containerManager.refreshImages()
         }
@@ -116,6 +163,20 @@ struct ContentView: View {
                 }
             }
         )
+    }
+
+    private func runExecCommand() {
+        let trimmed = execCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !execIsRunning else { return }
+        execIsRunning = true
+        Task {
+            let output = await containerManager.execContainer(
+                containerId: execContainerId,
+                command: trimmed
+            )
+            execOutput = output?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "No output."
+            execIsRunning = false
+        }
     }
     
     private var addToolbar: some ToolbarContent {
@@ -185,6 +246,9 @@ struct ServiceStatusView: View {
 
 struct ContainerRowView: View {
     let container: Container
+    @Binding var showingExecSheet: Bool
+    @Binding var execContainerId: String
+    @Binding var execOutput: String
     @EnvironmentObject var containerManager: ContainerizationWrapper
     @State private var showingDeleteConfirmation = false
     @State private var showingStopConfirmation = false
@@ -259,25 +323,71 @@ struct ContainerRowView: View {
                     }
                 }
                 .frame(width: 60)
-
-                Button(role: .destructive) {
-                    showingDeleteConfirmation = true
-                } label: {
-                    if isDeleting || containerManager.updatingContainerIDs.contains(container.id) {
-                        ProgressView()
-                            .scaleEffect(0.7)
-                            .frame(width: 16, height: 16)
-                    } else {
-                        Image(systemName: "trash")
-                            .frame(width: 16, height: 16)
-                    }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(isDeleting || containerManager.updatingContainerIDs.contains(container.id))
             }
         }
         .padding(.vertical, 4)
+        .contextMenu {
+            if container.status == .running {
+                Button {
+                    showingStopConfirmation = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "stop.fill")
+                            .foregroundColor(.red)
+                        Text("Stop")
+                    }
+                }
+                Button {
+                    execContainerId = container.id
+                    execOutput = ""
+                    showingExecSheet = true
+                } label: {
+                    Label("Exec", systemImage: "terminal")
+                }
+                Button {
+                    Task {
+                        await containerManager.stopContainer(containerId: container.id)
+                        await containerManager.startContainer(containerId: container.id)
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.clockwise")
+                            .foregroundColor(.blue)
+                        Text("Restart")
+                    }
+                }
+            } else {
+                Button {
+                    Task {
+                        await containerManager.startContainer(containerId: container.id)
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "play.fill")
+                            .foregroundColor(.green)
+                        Text("Start")
+                    }
+                }
+                Button {
+                    execContainerId = container.id
+                    execOutput = ""
+                    showingExecSheet = true
+                } label: {
+                    Label("Exec", systemImage: "terminal")
+                }
+            }
+            Divider()
+            Button(role: .destructive) {
+                showingDeleteConfirmation = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "trash")
+                        .foregroundColor(.red)
+                    Text("Delete")
+                }
+            }
+            .tint(.red)
+        }
         .confirmationDialog("Delete Container?", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
                 isDeleting = true

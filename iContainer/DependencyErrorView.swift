@@ -29,10 +29,14 @@ struct DependencyErrorView: View {
                 .cornerRadius(8)
             }
             
-            Text("Please install the required tools to continue.")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .padding(.top)
+            VStack(spacing: 6) {
+                Text("Please install the required tools to continue.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Link("Download latest release", destination: URL(string: "https://github.com/apple/container/releases")!)
+                    .font(.caption)
+            }
+            .padding(.top)
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -9,10 +9,14 @@ struct ContainerDetailView: View {
     @State private var rawInspectText: String = ""
     @State private var fallback: ContainerInspectFallback?
     @State private var selectedTab: Int = 0
+    @State private var showingExecSheet = false
+    @State private var execCommand = "echo hello"
+    @State private var execOutput = ""
+    @State private var execIsRunning = false
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 8) {
                 Spacer()
                 Picker("", selection: $selectedTab) {
                     Text("Info").tag(0)
@@ -21,6 +25,7 @@ struct ContainerDetailView: View {
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 200)
+                Spacer()
             }
             .padding(.horizontal)
             .padding(.top, 8)
@@ -31,19 +36,73 @@ struct ContainerDetailView: View {
                         details: details,
                         fallback: fallback,
                         isLoading: isLoading,
-                        formattedInspectOutput: formattedInspectOutput
+                        formattedInspectOutput: formattedInspectOutput,
+                        onExec: {
+                            execOutput = ""
+                            showingExecSheet = true
+                        }
                     )
                 } else if selectedTab == 1 {
-                    ContainerStatsView(details: details, containerId: containerId)
+                    ContainerStatsView(
+                        details: details,
+                        containerId: containerId,
+                        onExec: {
+                            execOutput = ""
+                            showingExecSheet = true
+                        }
+                    )
                 } else {
                     ContainerLogsView(
                         details: details,
-                        containerId: containerId
+                        containerId: containerId,
+                        onExec: {
+                            execOutput = ""
+                            showingExecSheet = true
+                        }
                     )
                 }
             }
         }
         .navigationTitle(details?.name ?? "Details")
+        .sheet(isPresented: $showingExecSheet) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Execute Command")
+                    .font(.headline)
+                TextField("Command", text: $execCommand)
+                    .textFieldStyle(.roundedBorder)
+                HStack {
+                    Button("Run") {
+                        execIsRunning = true
+                        Task {
+                            let output = await containerManager.execContainer(
+                                containerId: containerId,
+                                command: execCommand
+                            )
+                            execOutput = output?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "No output."
+                            execIsRunning = false
+                        }
+                    }
+                    .disabled(execCommand.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || execIsRunning)
+                    if execIsRunning {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                    }
+                    Spacer()
+                    Button("Close") {
+                        showingExecSheet = false
+                    }
+                }
+                ScrollView {
+                    Text(execOutput.isEmpty ? "Output will appear here." : execOutput)
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(minHeight: 200)
+            }
+            .padding()
+            .frame(minWidth: 500, minHeight: 360)
+        }
         .task(id: containerId) {
             await loadDetails()
         }
@@ -116,6 +175,7 @@ private struct ContainerInfoView: View {
     let fallback: ContainerInspectFallback?
     let isLoading: Bool
     let formattedInspectOutput: String
+    let onExec: () -> Void
 
     var body: some View {
         ScrollView {
@@ -125,104 +185,107 @@ private struct ContainerInfoView: View {
                     .padding(.top, 50)
             } else if let details = details {
                 VStack(alignment: .leading, spacing: 24) {
-                    ContainerHeaderView(details: details)
+                    ContainerHeaderView(details: details, onExec: onExec)
 
-                    DetailSection(title: "Basic Information", icon: "info.circle") {
-                        DetailRow(label: "Image", value: details.configuration?.image?.reference ?? fallback?.image ?? "-")
-                        DetailRow(label: "Command", value: details.command != "-" ? details.command : (fallback?.command ?? "-"), isMonospaced: true)
-                        if let resources = fallback?.resources {
-                            if let cpus = resources.cpus {
-                                DetailRow(label: "CPUs", value: "\(cpus)")
-                            }
-                            if let memoryBytes = resources.memoryBytes {
-                                DetailRow(label: "Memory", value: ByteCountFormatter.string(fromByteCount: memoryBytes, countStyle: .memory))
-                            }
-                        }
-                        if let created = fallback?.created {
-                            DetailRow(label: "Created", value: created)
-                        }
-                        if let workingDir = fallback?.workingDir {
-                            DetailRow(label: "Working Dir", value: workingDir, isMonospaced: true)
-                        }
-                        if let platform = fallback?.platform {
-                            DetailRow(label: "Platform", value: platform)
-                        }
-                        if let runtime = fallback?.runtimeHandler {
-                            DetailRow(label: "Runtime", value: runtime)
-                        }
-                        if let rosetta = fallback?.rosetta {
-                            DetailRow(label: "Rosetta", value: rosetta ? "Enabled" : "Disabled")
-                        }
-                        if let ssh = fallback?.ssh {
-                            DetailRow(label: "SSH", value: ssh ? "Enabled" : "Disabled")
-                        }
-                        if let readOnly = fallback?.readOnly {
-                            DetailRow(label: "Read Only FS", value: readOnly ? "Yes" : "No")
-                        }
-                    }
-
-                    DetailSection(title: "Network", icon: "network") {
-                        DetailRow(label: "IPv4", value: details.networks?.first?.address ?? fallback?.ipv4Address ?? "-")
-                        DetailRow(label: "IPv4 Gateway", value: fallback?.ipv4Gateway ?? "-")
-                        DetailRow(label: "IPv6", value: fallback?.ipv6Address ?? "-")
-                        DetailRow(label: "MAC", value: fallback?.macAddress ?? "-")
-                        let ports = !details.portBindings.isEmpty ? details.portBindings : (fallback?.ports ?? [])
-                        DetailRow(label: "Ports", value: ports.isEmpty ? "None" : ports.joined(separator: ", "))
-                        if let hostname = fallback?.hostname {
-                            DetailRow(label: "Hostname", value: hostname)
-                        }
-                    }
-
-                    DetailSection(title: "Mounts", icon: "externaldrive") {
-                        let mounts = details.configuration?.mounts
-                        if let mounts, !mounts.isEmpty {
-                            ForEach(mounts, id: \.self) { mount in
-                                DetailRow(label: mount.source ?? "-", value: mount.destination ?? "-")
-                            }
-                        } else if let fallbackMounts = fallback?.mounts, !fallbackMounts.isEmpty {
-                            ForEach(fallbackMounts, id: \.self) { mount in
-                                DetailRow(label: mount.source, value: mount.destination)
-                            }
-                        } else {
-                            Text("No volumes mounted.")
-                                .foregroundColor(.secondary)
-                                .font(.subheadline)
-                        }
-                    }
-
-                    DetailSection(title: "Environment Variables", icon: "scroll") {
-                        let env = details.configuration?.initProcess?.environment ?? fallback?.environment ?? []
-                        if !env.isEmpty {
-                            ForEach(env, id: \.self) { envVar in
-                                let parts = envVar.split(separator: "=", maxSplits: 1)
-                                if parts.count == 2 {
-                                    DetailRow(label: String(parts[0]), value: String(parts[1]), isMonospaced: true)
-                                } else {
-                                    Text(envVar)
-                                        .font(.caption)
-                                        .monospaced()
+                    let columns = [GridItem(.adaptive(minimum: 280), spacing: 16, alignment: .top)]
+                    LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
+                        DetailSection(title: "Basic Information", icon: "info.circle") {
+                            DetailRow(label: "Image", value: details.configuration?.image?.reference ?? fallback?.image ?? "-")
+                            DetailRow(label: "Command", value: details.command != "-" ? details.command : (fallback?.command ?? "-"), isMonospaced: true)
+                            if let resources = fallback?.resources {
+                                if let cpus = resources.cpus {
+                                    DetailRow(label: "CPUs", value: "\(cpus)")
+                                }
+                                if let memoryBytes = resources.memoryBytes {
+                                    DetailRow(label: "Memory", value: ByteCountFormatter.string(fromByteCount: memoryBytes, countStyle: .memory))
                                 }
                             }
-                        } else {
-                            Text("No environment variables set.")
-                                .foregroundColor(.secondary)
-                                .font(.subheadline)
+                            if let created = fallback?.created {
+                                DetailRow(label: "Created", value: created)
+                            }
+                            if let workingDir = fallback?.workingDir {
+                                DetailRow(label: "Working Dir", value: workingDir, isMonospaced: true)
+                            }
+                            if let platform = fallback?.platform {
+                                DetailRow(label: "Platform", value: platform)
+                            }
+                            if let runtime = fallback?.runtimeHandler {
+                                DetailRow(label: "Runtime", value: runtime)
+                            }
+                            if let rosetta = fallback?.rosetta {
+                                DetailRow(label: "Rosetta", value: rosetta ? "Enabled" : "Disabled")
+                            }
+                            if let ssh = fallback?.ssh {
+                                DetailRow(label: "SSH", value: ssh ? "Enabled" : "Disabled")
+                            }
+                            if let readOnly = fallback?.readOnly {
+                                DetailRow(label: "Read Only FS", value: readOnly ? "Yes" : "No")
+                            }
                         }
-                    }
 
-                    if let dns = fallback?.dns {
-                        DetailSection(title: "DNS", icon: "globe") {
-                            if let domain = dns.domain {
-                                DetailRow(label: "Domain", value: domain)
+                        DetailSection(title: "Network", icon: "network") {
+                            DetailRow(label: "IPv4", value: details.networks?.first?.address ?? fallback?.ipv4Address ?? "-")
+                            DetailRow(label: "IPv4 Gateway", value: fallback?.ipv4Gateway ?? "-")
+                            DetailRow(label: "IPv6", value: fallback?.ipv6Address ?? "-")
+                            DetailRow(label: "MAC", value: fallback?.macAddress ?? "-")
+                            let ports = !details.portBindings.isEmpty ? details.portBindings : (fallback?.ports ?? [])
+                            DetailRow(label: "Ports", value: ports.isEmpty ? "None" : ports.joined(separator: ", "))
+                            if let hostname = fallback?.hostname {
+                                DetailRow(label: "Hostname", value: hostname)
                             }
-                            if !dns.nameservers.isEmpty {
-                                DetailRow(label: "Nameservers", value: dns.nameservers.joined(separator: ", "))
+                        }
+
+                        DetailSection(title: "Mounts", icon: "externaldrive") {
+                            let mounts = details.configuration?.mounts
+                            if let mounts, !mounts.isEmpty {
+                                ForEach(mounts, id: \.self) { mount in
+                                    DetailRow(label: mount.source ?? "-", value: mount.destination ?? "-")
+                                }
+                            } else if let fallbackMounts = fallback?.mounts, !fallbackMounts.isEmpty {
+                                ForEach(fallbackMounts, id: \.self) { mount in
+                                    DetailRow(label: mount.source, value: mount.destination)
+                                }
+                            } else {
+                                Text("No volumes mounted.")
+                                    .foregroundColor(.secondary)
+                                    .font(.subheadline)
                             }
-                            if !dns.searchDomains.isEmpty {
-                                DetailRow(label: "Search", value: dns.searchDomains.joined(separator: ", "))
+                        }
+
+                        DetailSection(title: "Environment Variables", icon: "scroll") {
+                            let env = details.configuration?.initProcess?.environment ?? fallback?.environment ?? []
+                            if !env.isEmpty {
+                                ForEach(env, id: \.self) { envVar in
+                                    let parts = envVar.split(separator: "=", maxSplits: 1)
+                                    if parts.count == 2 {
+                                        DetailRow(label: String(parts[0]), value: String(parts[1]), isMonospaced: true)
+                                    } else {
+                                        Text(envVar)
+                                            .font(.caption)
+                                            .monospaced()
+                                    }
+                                }
+                            } else {
+                                Text("No environment variables set.")
+                                    .foregroundColor(.secondary)
+                                    .font(.subheadline)
                             }
-                            if !dns.options.isEmpty {
-                                DetailRow(label: "Options", value: dns.options.joined(separator: ", "))
+                        }
+
+                        if let dns = fallback?.dns {
+                            DetailSection(title: "DNS", icon: "globe") {
+                                if let domain = dns.domain {
+                                    DetailRow(label: "Domain", value: domain)
+                                }
+                                if !dns.nameservers.isEmpty {
+                                    DetailRow(label: "Nameservers", value: dns.nameservers.joined(separator: ", "))
+                                }
+                                if !dns.searchDomains.isEmpty {
+                                    DetailRow(label: "Search", value: dns.searchDomains.joined(separator: ", "))
+                                }
+                                if !dns.options.isEmpty {
+                                    DetailRow(label: "Options", value: dns.options.joined(separator: ", "))
+                                }
                             }
                         }
                     }
@@ -252,6 +315,7 @@ private struct ContainerInfoView: View {
 
 private struct ContainerHeaderView: View {
     let details: ContainerDetails
+    let onExec: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -259,6 +323,12 @@ private struct ContainerHeaderView: View {
                 Text(details.name)
                     .font(.largeTitle)
                     .fontWeight(.bold)
+                Button {
+                    onExec()
+                } label: {
+                    Image(systemName: "terminal")
+                }
+                .buttonStyle(.bordered)
                 Spacer()
                 StatusBadge(status: details.status ?? "unknown")
             }
@@ -274,6 +344,7 @@ private struct ContainerHeaderView: View {
 private struct ContainerLogsView: View {
     let details: ContainerDetails?
     let containerId: String
+    let onExec: () -> Void
     @EnvironmentObject var containerManager: ContainerizationWrapper
     @State private var logsText: String = ""
     @State private var isLoadingLogs = false
@@ -292,7 +363,7 @@ private struct ContainerLogsView: View {
             let logAreaHeight = max(240, proxy.size.height - 220)
             VStack(alignment: .leading, spacing: 24) {
                 if let details = details {
-                    ContainerHeaderView(details: details)
+                    ContainerHeaderView(details: details, onExec: onExec)
                 } else {
                     ProgressView("Loading Details...")
                         .padding(.top, 12)
@@ -446,6 +517,7 @@ private struct ContainerLogsView: View {
 private struct ContainerStatsView: View {
     let details: ContainerDetails?
     let containerId: String
+    let onExec: () -> Void
     @EnvironmentObject var containerManager: ContainerizationWrapper
     @State private var stats: ContainerStats?
     @State private var isLoading = false
@@ -466,7 +538,7 @@ private struct ContainerStatsView: View {
             ScrollView {
                 if let details = details {
                     VStack(alignment: .leading, spacing: 24) {
-                        ContainerHeaderView(details: details)
+                        ContainerHeaderView(details: details, onExec: onExec)
                         DetailSection(title: "Resource Stats", icon: "speedometer") {
                             if let stats = stats {
                                 HStack(alignment: .top, spacing: 16) {
