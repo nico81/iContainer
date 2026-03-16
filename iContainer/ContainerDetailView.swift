@@ -3,16 +3,23 @@ import Charts
 
 struct ContainerDetailView: View {
     let containerId: String
+    let initialTab: Int
     @EnvironmentObject var containerManager: ContainerizationWrapper
     @State private var details: ContainerDetails?
     @State private var isLoading = true
     @State private var rawInspectText: String = ""
     @State private var fallback: ContainerInspectFallback?
-    @State private var selectedTab: Int = 0
+    @State private var selectedTab: Int
     @State private var showingExecSheet = false
     @State private var execCommand = "echo hello"
     @State private var execOutput = ""
     @State private var execIsRunning = false
+
+    init(containerId: String, initialTab: Int = 0) {
+        self.containerId = containerId
+        self.initialTab = initialTab
+        _selectedTab = State(initialValue: initialTab)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -48,7 +55,6 @@ struct ContainerDetailView: View {
                     details: details,
                     containerId: containerId,
                     cpuLimit: fallback?.resources?.cpus,
-                    isActive: selectedTab == 1,
                     onExec: {
                         execOutput = ""
                         showingExecSheet = true
@@ -538,7 +544,6 @@ private struct ContainerStatsView: View {
     let details: ContainerDetails?
     let containerId: String
     let cpuLimit: Int?
-    let isActive: Bool
     let onExec: () -> Void
     @EnvironmentObject var containerManager: ContainerizationWrapper
     @State private var stats: ContainerStats?
@@ -552,6 +557,19 @@ private struct ContainerStatsView: View {
     @State private var lastNetSampleDate: Date?
 
     private let refreshIntervalNanos: UInt64 = 3_000_000_000
+
+    private struct StatsCache {
+        var stats: ContainerStats?
+        var cpuSeries: [StatPoint]
+        var cpuSeriesIsRaw: Bool
+        var memorySeries: [StatPoint]
+        var netSeries: [StatPoint]
+        var lastNetTotalBytes: Int64?
+        var lastNetSampleDate: Date?
+    }
+
+    private static var cache: [String: StatsCache] = [:]
+    private static var sharedTasks: [String: Task<Void, Never>] = [:]
 
     var body: some View {
         GeometryReader { proxy in
@@ -569,7 +587,7 @@ private struct ContainerStatsView: View {
                             if let stats = stats {
                                 HStack(alignment: .top, spacing: 16) {
                                     VStack(alignment: .leading, spacing: 8) {
-                                        DetailRow(label: "CPU %", value: stats.cpuPercent)
+                                        DetailRow(label: "CPU %", value: normalizedCpuPercentText(for: stats))
                                         DetailRow(label: "Memory Usage", value: stats.memoryUsage)
                                         DetailRow(label: "Net Rx/Tx", value: stats.netRxTx)
                                         DetailRow(label: "Block I/O", value: stats.blockIo)
@@ -589,11 +607,11 @@ private struct ContainerStatsView: View {
                                             Chart(cpuSeries) { point in
                                                 LineMark(
                                                     x: .value("Time", point.time),
-                                                    y: .value("CPU %", point.value)
+                                                    y: .value("CPU %", normalizedCpuPercentValue(raw: point.value))
                                                 )
                                             }
                                             .chartXScale(domain: chartDomain)
-                                            .chartYScale(domain: 0...cpuScaleMax)
+                                            .chartYScale(domain: 0...100)
                                         }
                                         .frame(height: infoBoxHeight)
 
@@ -621,13 +639,22 @@ private struct ContainerStatsView: View {
                                     }
                                     .padding()
                                     .padding(.top, -16)
+                                    .padding(.trailing, 4)
                                     .frame(width: sectionContentWidth * 0.67, alignment: .leading)
                                 }
                                 .padding(.top, -8)
                                 .frame(width: sectionContentWidth, alignment: .leading)
                                 .frame(height: statsHeight)
                             } else if isLoading {
-                                ProgressView("Loading Stats...")
+                                VStack(spacing: 12) {
+                                    ProgressView()
+                                        .scaleEffect(1.1)
+                                    Text("Loading")
+                                        .font(.headline)
+                                        .foregroundColor(.secondary)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 80)
                             } else {
                                 Text("No stats available.")
                                     .foregroundColor(.secondary)
@@ -643,26 +670,46 @@ private struct ContainerStatsView: View {
                 }
             }
         }
-        .onAppear { startAutoRefresh() }
-        .onDisappear { stopAutoRefresh() }
-        .onChange(of: isActive) { _, newValue in
-            if newValue {
-                startAutoRefresh()
-            } else {
-                stopAutoRefresh()
-            }
+        .onAppear {
+            loadCache()
+            ensureSharedPolling()
+            startAutoRefresh()
+        }
+        .onDisappear {
+            stopAutoRefresh()
+            saveCache()
         }
     }
 
-    private var cpuScaleMax: Double {
-        let limit = Double(max(1, cpuLimit ?? 1)) * 100.0
-        let seriesMax = cpuSeries.map(\.value).max() ?? 0
-        return max(100, limit, seriesMax * 1.1)
+    private func normalizedCpuPercentText(for stats: ContainerStats) -> String {
+        guard let normalized = normalizedCpuPercentValue(for: stats) else { return stats.cpuPercent }
+        return String(format: "%.2f%%", normalized)
+    }
+
+    private func normalizedCpuPercentValue(for stats: ContainerStats) -> Double? {
+        let rawValue = stats.cpuPercentValue ?? parsePercent(stats.cpuPercent)
+        guard let cpu = rawValue else { return nil }
+        let coreCount = effectiveCoreCount(for: cpu)
+        return min(100, cpu / coreCount)
+    }
+
+    private func normalizedCpuPercentValue(raw cpuValue: Double) -> Double {
+        let coreCount = effectiveCoreCount(for: cpuValue)
+        return min(100, cpuValue / coreCount)
+    }
+
+    private func effectiveCoreCount(for cpuValue: Double) -> Double {
+        if let cpuLimit, cpuLimit > 0 {
+            return Double(cpuLimit)
+        }
+        if cpuValue > 100 {
+            return Double(Int(ceil(cpuValue / 100.0)))
+        }
+        return 1
     }
 
     private func startAutoRefresh() {
         stopAutoRefresh()
-        guard isActive else { return }
         refreshTask = Task {
             while !Task.isCancelled {
                 if autoRefresh {
@@ -673,6 +720,63 @@ private struct ContainerStatsView: View {
         }
     }
 
+    private func ensureSharedPolling() {
+        if Self.sharedTasks[containerId] != nil { return }
+        let manager = containerManager
+        Self.sharedTasks[containerId] = Task {
+            while !Task.isCancelled {
+                if let output = await manager.fetchContainerStats(containerId: containerId) {
+                    let parsed = parseContainerStats(output)
+                    await MainActor.run {
+                        if let parsed {
+                            var cached = Self.cache[containerId] ?? StatsCache(
+                                stats: nil,
+                                cpuSeries: [],
+                                cpuSeriesIsRaw: true,
+                                memorySeries: [],
+                                netSeries: [],
+                                lastNetTotalBytes: nil,
+                                lastNetSampleDate: nil
+                            )
+                            cached.stats = parsed
+                            cached = updateCacheSeries(cached: cached, with: parsed)
+                            Self.cache[containerId] = cached
+                        }
+                    }
+                }
+                try? await Task.sleep(nanoseconds: refreshIntervalNanos)
+            }
+        }
+    }
+
+    private func loadCache() {
+        guard var cached = Self.cache[containerId] else { return }
+        stats = cached.stats
+        if !cached.cpuSeriesIsRaw {
+            let rawFactor = effectiveCoreCount(for: cached.stats?.cpuPercentValue ?? parsePercent(cached.stats?.cpuPercent ?? "") ?? 0)
+            cached.cpuSeries = cached.cpuSeries.map { StatPoint(time: $0.time, value: $0.value * rawFactor) }
+            cached.cpuSeriesIsRaw = true
+            Self.cache[containerId] = cached
+        }
+        cpuSeries = cached.cpuSeries
+        memorySeries = cached.memorySeries
+        netSeries = cached.netSeries
+        lastNetTotalBytes = cached.lastNetTotalBytes
+        lastNetSampleDate = cached.lastNetSampleDate
+    }
+
+    private func saveCache() {
+        Self.cache[containerId] = StatsCache(
+            stats: stats,
+            cpuSeries: cpuSeries,
+            cpuSeriesIsRaw: true,
+            memorySeries: memorySeries,
+            netSeries: netSeries,
+            lastNetTotalBytes: lastNetTotalBytes,
+            lastNetSampleDate: lastNetSampleDate
+        )
+    }
+
     private func stopAutoRefresh() {
         refreshTask?.cancel()
         refreshTask = nil
@@ -681,44 +785,78 @@ private struct ContainerStatsView: View {
     private func refreshStats() async {
         isLoading = true
         if let output = await containerManager.fetchContainerStats(containerId: containerId) {
-            stats = parseContainerStats(output)
-            updateSeries()
+            if let parsed = parseContainerStats(output) {
+                stats = parsed
+                updateSeries(with: parsed)
+            } else {
+                stats = nil
+            }
         } else {
             stats = nil
+        }
+        if let cached = Self.cache[containerId] {
+            applyCache(cached)
         }
         isLoading = false
     }
 
-    private func updateSeries() {
-        guard let stats else { return }
+    private func updateSeries(with parsed: ContainerStats) {
+        let updated = updateCacheSeries(
+            cached: StatsCache(
+                stats: parsed,
+                cpuSeries: cpuSeries,
+                cpuSeriesIsRaw: true,
+                memorySeries: memorySeries,
+                netSeries: netSeries,
+                lastNetTotalBytes: lastNetTotalBytes,
+                lastNetSampleDate: lastNetSampleDate
+            ),
+            with: parsed
+        )
+        applyCache(updated)
+        saveCache()
+    }
+
+    private func updateCacheSeries(cached: StatsCache, with parsed: ContainerStats) -> StatsCache {
+        var updated = cached
         let now = Date()
-        if let cpu = stats.cpuPercentValue {
-            cpuSeries.append(StatPoint(time: now, value: cpu))
+        let rawCpu = parsed.cpuPercentValue ?? parsePercent(parsed.cpuPercent) ?? 0
+        updated.cpuSeries.append(StatPoint(time: now, value: rawCpu))
+        if let memBytes = parsed.memoryUsageBytes {
+            updated.memorySeries.append(StatPoint(time: now, value: Double(memBytes) / 1_048_576.0))
         }
-        if let memBytes = stats.memoryUsageBytes {
-            memorySeries.append(StatPoint(time: now, value: Double(memBytes) / 1_048_576.0))
-        }
-        if let rx = stats.netRxBytes, let tx = stats.netTxBytes {
+        if let rx = parsed.netRxBytes, let tx = parsed.netTxBytes {
             let total = rx + tx
-            if let lastTotal = lastNetTotalBytes, let lastTime = lastNetSampleDate {
+            if let lastTotal = updated.lastNetTotalBytes, let lastTime = updated.lastNetSampleDate {
                 let deltaBytes = max(0, total - lastTotal)
                 let elapsed = max(1.0, now.timeIntervalSince(lastTime))
                 let kbPerSec = (Double(deltaBytes) / 1024.0) / elapsed
-                netSeries.append(StatPoint(time: now, value: kbPerSec))
+                updated.netSeries.append(StatPoint(time: now, value: kbPerSec))
             } else {
-                netSeries.append(StatPoint(time: now, value: 0))
+                updated.netSeries.append(StatPoint(time: now, value: 0))
             }
-            lastNetTotalBytes = total
-            lastNetSampleDate = now
+            updated.lastNetTotalBytes = total
+            updated.lastNetSampleDate = now
         }
-        cpuSeries = Array(cpuSeries.suffix(60))
-        memorySeries = Array(memorySeries.suffix(60))
-        netSeries = Array(netSeries.suffix(60))
+        let retentionCutoff = now.addingTimeInterval(-600)
+        updated.cpuSeries = updated.cpuSeries.filter { $0.time >= retentionCutoff }
+        updated.memorySeries = updated.memorySeries.filter { $0.time >= retentionCutoff }
+        updated.netSeries = updated.netSeries.filter { $0.time >= retentionCutoff }
+        return updated
+    }
+
+    private func applyCache(_ cached: StatsCache) {
+        stats = cached.stats
+        cpuSeries = cached.cpuSeries
+        memorySeries = cached.memorySeries
+        netSeries = cached.netSeries
+        lastNetTotalBytes = cached.lastNetTotalBytes
+        lastNetSampleDate = cached.lastNetSampleDate
     }
 
     private var chartDomain: ClosedRange<Date> {
         let now = Date()
-        let earliest = now.addingTimeInterval(-180)
+        let earliest = now.addingTimeInterval(-300)
         let minTime = [
             cpuSeries.first?.time,
             memorySeries.first?.time,

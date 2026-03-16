@@ -1,5 +1,15 @@
 import SwiftUI
 
+struct ContainerNavigationTarget: Hashable {
+    let id: String
+    let tab: Int
+}
+
+enum SidebarSelection: Hashable {
+    case service
+    case container(ContainerNavigationTarget)
+}
+
 struct ContentView: View {
     @EnvironmentObject var containerManager: ContainerizationWrapper
     @EnvironmentObject var serviceManager: ServiceManager
@@ -15,69 +25,24 @@ struct ContentView: View {
     @State private var execCommand = "echo hello"
     @State private var execOutput = ""
     @State private var execIsRunning = false
+    @State private var selection: SidebarSelection?
     @FocusState private var execCommandFocused: Bool
 
     var body: some View {
-        if !containerManager.missingDependencies.isEmpty {
-            DependencyErrorView(errors: containerManager.missingDependencies)
-        } else {
-            NavigationView {
-            List {
-                Section(header: Text("Container System Service")) {
-                    NavigationLink(destination: ServiceDetailView()) {
-                        ServiceStatusView()
-                    }
-                }
-                Section {
-                    DisclosureGroup("Containers", isExpanded: $isContainersExpanded) {
-                    ForEach(containerManager.containers) { container in
-                        ContainerRowView(
-                            container: container,
-                            showingExecSheet: $showingExecSheet,
-                            execContainerId: $execContainerId,
-                            execOutput: $execOutput
-                        )
-                    }
-                }
-                }
-                Section {
-                    DisclosureGroup(isExpanded: $isImagesExpanded) {
-                        ForEach(containerManager.images) { image in
-                            ImageRowView(image: image)
-                        }
-                    } label: {
-                        HStack {
-                            Text("Images")
-                            Spacer()
-                            Button {
-                                showingPullImageAlert = true
-                            } label: {
-                                if isPullingImage {
-                                    ProgressView()
-                                        .scaleEffect(0.7)
-                                } else {
-                                    Image(systemName: "square.and.arrow.down")
-                                }
-                            }
-                            .buttonStyle(.borderless)
-                            .disabled(isPullingImage)
-                        }
-                    }
-                }
+        Group {
+            if !containerManager.missingDependencies.isEmpty {
+                DependencyErrorView(errors: containerManager.missingDependencies)
+            } else {
+                mainContent
             }
-            .listStyle(.sidebar)
-            .navigationTitle("iContainer")
-            .toolbar { addToolbar }
-            .alert("Operation Failed", isPresented: errorAlertBinding) {
-                Button("OK", role: .cancel) {
-                    containerManager.lastErrorMessage = nil
-                }
-            } message: {
-                Text(containerManager.lastErrorMessage ?? "Unknown error")
-            }
-            
-            // Placeholder view for when no container is selected
-            Text("Select a container to see its details.")
+        }
+    }
+
+    private var mainContent: some View {
+        NavigationSplitView {
+            sidebar
+        } detail: {
+            detailView
         }
         .alert("New Container", isPresented: $showingAddContainerAlert) {
             TextField("Container Name", text: $newContainerName)
@@ -113,44 +78,121 @@ struct ContentView: View {
             Text("Enter the image reference to pull from the registry.")
         }
         .sheet(isPresented: $showingExecSheet) {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Execute Command")
-                    .font(.headline)
-                TextField("Command", text: $execCommand)
-                    .textFieldStyle(.roundedBorder)
-                    .focused($execCommandFocused)
-                HStack {
-                    Button("Run") {
-                        runExecCommand()
-                    }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(execCommand.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || execIsRunning)
-                    if execIsRunning {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                    }
-                    Spacer()
-                    Button("Close") {
-                        showingExecSheet = false
-                    }
-                }
-                ScrollView {
-                    Text(execOutput.isEmpty ? "Output will appear here." : execOutput)
-                        .font(.caption.monospaced())
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .frame(minHeight: 200)
-            }
-            .padding()
-            .frame(minWidth: 500, minHeight: 360)
-            .onAppear {
-                execCommandFocused = true
-            }
+            execSheet
         }
         .task {
             await containerManager.refreshImages()
         }
+    }
+
+    private var sidebar: some View {
+        List(selection: $selection) {
+            Section(header: Text("Container System Service")) {
+                NavigationLink(value: SidebarSelection.service) {
+                    ServiceStatusView()
+                }
+            }
+            Section {
+                DisclosureGroup("Containers", isExpanded: $isContainersExpanded) {
+                    ForEach(containerManager.containers) { container in
+                        NavigationLink(value: SidebarSelection.container(ContainerNavigationTarget(id: container.id, tab: 0))) {
+                            ContainerRowView(
+                                container: container,
+                                onNavigateToTab: { tab in
+                                    selection = .container(ContainerNavigationTarget(id: container.id, tab: tab))
+                                },
+                                showingExecSheet: $showingExecSheet,
+                                execContainerId: $execContainerId,
+                                execOutput: $execOutput
+                            )
+                        }
+                    }
+                }
+            }
+            Section {
+                DisclosureGroup(isExpanded: $isImagesExpanded) {
+                    ForEach(containerManager.images) { image in
+                        ImageRowView(image: image)
+                    }
+                } label: {
+                    HStack {
+                        Text("Images")
+                        Spacer()
+                        Button {
+                            showingPullImageAlert = true
+                        } label: {
+                            if isPullingImage {
+                                ProgressView()
+                                    .scaleEffect(0.7)
+                            } else {
+                                Image(systemName: "square.and.arrow.down")
+                            }
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(isPullingImage)
+                    }
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        .navigationTitle("iContainer")
+        .toolbar { addToolbar }
+        .alert("Operation Failed", isPresented: errorAlertBinding) {
+            Button("OK", role: .cancel) {
+                containerManager.lastErrorMessage = nil
+            }
+        } message: {
+            Text(containerManager.lastErrorMessage ?? "Unknown error")
+        }
+    }
+
+    private var execSheet: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Execute Command")
+                .font(.headline)
+            TextField("Command", text: $execCommand)
+                .textFieldStyle(.roundedBorder)
+                .focused($execCommandFocused)
+            HStack {
+                Button("Run") {
+                    runExecCommand()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(execCommand.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || execIsRunning)
+                if execIsRunning {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                }
+                Spacer()
+                Button("Close") {
+                    showingExecSheet = false
+                }
+            }
+            ScrollView {
+                Text(execOutput.isEmpty ? "Output will appear here." : execOutput)
+                    .font(.caption.monospaced())
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(minHeight: 200)
+        }
+        .padding()
+        .frame(minWidth: 500, minHeight: 360)
+        .onAppear {
+            execCommandFocused = true
+        }
+    }
+
+    @ViewBuilder
+    private var detailView: some View {
+        switch selection {
+        case .service:
+            ServiceDetailView()
+        case .container(let target):
+            ContainerDetailView(containerId: target.id, initialTab: target.tab)
+                .id(target)
+        default:
+            Text("Select a container to see its details.")
         }
     }
 
@@ -246,6 +288,7 @@ struct ServiceStatusView: View {
 
 struct ContainerRowView: View {
     let container: Container
+    let onNavigateToTab: (Int) -> Void
     @Binding var showingExecSheet: Bool
     @Binding var execContainerId: String
     @Binding var execOutput: String
@@ -256,38 +299,33 @@ struct ContainerRowView: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            NavigationLink {
-                ContainerDetailView(containerId: container.id)
-            } label: {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Circle()
-                            .fill(container.status == .running ? Color.green : Color.red)
-                            .brightness(container.status == .running ? 0.15 : 0.05)
-                            .frame(width: 10, height: 10)
-                            .overlay(
-                                Circle()
-                                    .stroke(Color.white.opacity(0.9), lineWidth: 1)
-                            )
-                            .shadow(color: Color.black.opacity(0.15), radius: 1, x: 0, y: 0)
-                        Text(container.name)
-                            .font(.headline)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Circle()
+                        .fill(container.status == .running ? Color.green : Color.red)
+                        .brightness(container.status == .running ? 0.15 : 0.05)
+                        .frame(width: 10, height: 10)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white.opacity(0.9), lineWidth: 1)
+                        )
+                        .shadow(color: Color.black.opacity(0.15), radius: 1, x: 0, y: 0)
+                    Text(container.name)
+                        .font(.headline)
+                }
+                HStack(spacing: 16) {
+                    if let image = container.image {
+                        Label(image, systemImage: "shippingbox")
+                            .font(.caption)
                     }
-                    HStack(spacing: 16) {
-                        if let image = container.image {
-                            Label(image, systemImage: "shippingbox")
-                                .font(.caption)
-                        }
-                        if let ip = container.ipAddress {
-                            Label(ip, systemImage: "network")
-                                .font(.caption)
-                        }
+                    if let ip = container.ipAddress {
+                        Label(ip, systemImage: "network")
+                            .font(.caption)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
             HStack(spacing: 12) {
                 ZStack {
                     if isDeleting || containerManager.updatingContainerIDs.contains(container.id) {
@@ -375,6 +413,22 @@ struct ContainerRowView: View {
                 } label: {
                     Label("Exec", systemImage: "terminal")
                 }
+            }
+            Divider()
+            Button {
+                onNavigateToTab(0)
+            } label: {
+                Label("Info", systemImage: "info.circle")
+            }
+            Button {
+                onNavigateToTab(1)
+            } label: {
+                Label("Stats", systemImage: "chart.xyaxis.line")
+            }
+            Button {
+                onNavigateToTab(2)
+            } label: {
+                Label("Logs", systemImage: "doc.plaintext")
             }
             Divider()
             Button(role: .destructive) {
