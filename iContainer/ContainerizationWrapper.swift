@@ -114,6 +114,14 @@ class ContainerizationWrapper: ObservableObject {
                         ipAddress: cli.networks?.first?.address
                     )
                 }
+                .sorted { lhs, rhs in
+                    let lhsPriority = lhs.status == .running ? 0 : 1
+                    let rhsPriority = rhs.status == .running ? 0 : 1
+                    if lhsPriority != rhsPriority {
+                        return lhsPriority < rhsPriority
+                    }
+                    return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+                }
                 
                 // Update only if the containers list has changed
                 if self.containers != newContainers {

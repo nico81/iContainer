@@ -99,25 +99,31 @@ struct ContentView: View {
             }
             Section {
                 DisclosureGroup(isExpanded: $isImagesExpanded) {
-                    ForEach(containerManager.images) { image in
-                        ImageRowView(image: image)
+                    if serviceManager.isServiceRunning {
+                        ForEach(containerManager.images) { image in
+                            ImageRowView(image: image)
+                        }
+                    } else {
+                        EmptyView()
                     }
                 } label: {
                     HStack {
                         Text("Images")
                         Spacer()
-                        Button {
-                            showingPullImageAlert = true
-                        } label: {
-                            if isPullingImage {
-                                ProgressView()
-                                    .scaleEffect(0.7)
-                            } else {
-                                Image(systemName: "square.and.arrow.down")
+                        if serviceManager.isServiceRunning {
+                            Button {
+                                showingPullImageAlert = true
+                            } label: {
+                                if isPullingImage {
+                                    ProgressView()
+                                        .scaleEffect(0.7)
+                                } else {
+                                    Image(systemName: "square.and.arrow.down")
+                                }
                             }
+                            .buttonStyle(.borderless)
+                            .disabled(isPullingImage)
                         }
-                        .buttonStyle(.borderless)
-                        .disabled(isPullingImage)
                     }
                 }
             }
@@ -158,12 +164,15 @@ struct ContentView: View {
         )
     }
 
+    @ToolbarContentBuilder
     private var addToolbar: some ToolbarContent {
-        ToolbarItem(placement: .primaryAction) {
-            Button {
-                showingAddContainerAlert = true
-            } label: {
-                Image(systemName: "plus")
+        if serviceManager.isServiceRunning {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showingAddContainerAlert = true
+                } label: {
+                    Image(systemName: "plus")
+                }
             }
         }
     }
