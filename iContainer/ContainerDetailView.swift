@@ -30,37 +30,44 @@ struct ContainerDetailView: View {
             .padding(.horizontal)
             .padding(.top, 8)
 
-            Group {
-                if selectedTab == 0 {
-                    ContainerInfoView(
-                        details: details,
-                        fallback: fallback,
-                        isLoading: isLoading,
-                        formattedInspectOutput: formattedInspectOutput,
-                        onExec: {
-                            execOutput = ""
-                            showingExecSheet = true
-                        }
-                    )
-                } else if selectedTab == 1 {
-                    ContainerStatsView(
-                        details: details,
-                        containerId: containerId,
-                        onExec: {
-                            execOutput = ""
-                            showingExecSheet = true
-                        }
-                    )
-                } else {
-                    ContainerLogsView(
-                        details: details,
-                        containerId: containerId,
-                        onExec: {
-                            execOutput = ""
-                            showingExecSheet = true
-                        }
-                    )
-                }
+            ZStack {
+                ContainerInfoView(
+                    details: details,
+                    fallback: fallback,
+                    isLoading: isLoading,
+                    formattedInspectOutput: formattedInspectOutput,
+                    onExec: {
+                        execOutput = ""
+                        showingExecSheet = true
+                    }
+                )
+                .opacity(selectedTab == 0 ? 1 : 0)
+                .allowsHitTesting(selectedTab == 0)
+
+                ContainerStatsView(
+                    details: details,
+                    containerId: containerId,
+                    cpuLimit: fallback?.resources?.cpus,
+                    isActive: selectedTab == 1,
+                    onExec: {
+                        execOutput = ""
+                        showingExecSheet = true
+                    }
+                )
+                .opacity(selectedTab == 1 ? 1 : 0)
+                .allowsHitTesting(selectedTab == 1)
+
+                ContainerLogsView(
+                    details: details,
+                    containerId: containerId,
+                    isActive: selectedTab == 2,
+                    onExec: {
+                        execOutput = ""
+                        showingExecSheet = true
+                    }
+                )
+                .opacity(selectedTab == 2 ? 1 : 0)
+                .allowsHitTesting(selectedTab == 2)
             }
         }
         .navigationTitle(details?.name ?? "Details")
@@ -348,6 +355,7 @@ private struct ContainerHeaderView: View {
 private struct ContainerLogsView: View {
     let details: ContainerDetails?
     let containerId: String
+    let isActive: Bool
     let onExec: () -> Void
     @EnvironmentObject var containerManager: ContainerizationWrapper
     @State private var logsText: String = ""
@@ -420,6 +428,13 @@ private struct ContainerLogsView: View {
         }
         .onAppear { startAutoRefresh() }
         .onDisappear { stopAutoRefresh() }
+        .onChange(of: isActive) { _, newValue in
+            if newValue {
+                startAutoRefresh()
+            } else {
+                stopAutoRefresh()
+            }
+        }
     }
 
     private var filteredLogs: String {
@@ -433,6 +448,7 @@ private struct ContainerLogsView: View {
 
     private func startAutoRefresh() {
         stopAutoRefresh()
+        guard isActive else { return }
         refreshTask = Task {
             while !Task.isCancelled {
                 if autoRefresh {
@@ -521,6 +537,8 @@ private struct ContainerLogsView: View {
 private struct ContainerStatsView: View {
     let details: ContainerDetails?
     let containerId: String
+    let cpuLimit: Int?
+    let isActive: Bool
     let onExec: () -> Void
     @EnvironmentObject var containerManager: ContainerizationWrapper
     @State private var stats: ContainerStats?
@@ -537,8 +555,12 @@ private struct ContainerStatsView: View {
 
     var body: some View {
         GeometryReader { proxy in
+            let horizontalPadding: CGFloat = 24
+            let sectionInnerPadding: CGFloat = 32
+            let sectionContentWidth = max(0, proxy.size.width - (horizontalPadding * 2) - sectionInnerPadding)
             let statsHeight = max(420, proxy.size.height - 180)
             let chartHeight = max(90, (statsHeight - 48) / 3)
+            let infoBoxHeight = max(150, chartHeight)
             ScrollView {
                 if let details = details {
                     VStack(alignment: .leading, spacing: 24) {
@@ -554,12 +576,12 @@ private struct ContainerStatsView: View {
                                         DetailRow(label: "Pids", value: stats.pids)
                                     }
                                     .padding()
-                                    .frame(width: (proxy.size.width - 64) * 0.33, alignment: .leading)
+                                    .frame(width: sectionContentWidth * 0.33, height: infoBoxHeight, alignment: .leading)
                                     .background(Color(nsColor: .controlBackgroundColor))
                                     .cornerRadius(10)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 10)
-                                            .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                                            .stroke(Color.gray.opacity(0.15), lineWidth: 1)
                                     )
 
                                     VStack(alignment: .leading, spacing: 12) {
@@ -571,9 +593,9 @@ private struct ContainerStatsView: View {
                                                 )
                                             }
                                             .chartXScale(domain: chartDomain)
-                                            .chartYScale(domain: 0...100)
+                                            .chartYScale(domain: 0...cpuScaleMax)
                                         }
-                                        .frame(height: chartHeight)
+                                        .frame(height: infoBoxHeight)
 
                                         ChartPanel(title: "Memory (MB)") {
                                             Chart(memorySeries) { point in
@@ -598,10 +620,11 @@ private struct ContainerStatsView: View {
                                         .frame(height: chartHeight)
                                     }
                                     .padding()
-                                    .padding(.trailing, 8)
-                                    .frame(width: (proxy.size.width - 64) * 0.67, alignment: .leading)
+                                    .padding(.top, -16)
+                                    .frame(width: sectionContentWidth * 0.67, alignment: .leading)
                                 }
                                 .padding(.top, -8)
+                                .frame(width: sectionContentWidth, alignment: .leading)
                                 .frame(height: statsHeight)
                             } else if isLoading {
                                 ProgressView("Loading Stats...")
@@ -611,7 +634,8 @@ private struct ContainerStatsView: View {
                             }
                         }
                     }
-                    .padding()
+                    .padding(.horizontal, horizontalPadding)
+                    .padding(.vertical, 16)
                 } else {
                     ProgressView("Loading Details...")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -621,10 +645,24 @@ private struct ContainerStatsView: View {
         }
         .onAppear { startAutoRefresh() }
         .onDisappear { stopAutoRefresh() }
+        .onChange(of: isActive) { _, newValue in
+            if newValue {
+                startAutoRefresh()
+            } else {
+                stopAutoRefresh()
+            }
+        }
+    }
+
+    private var cpuScaleMax: Double {
+        let limit = Double(max(1, cpuLimit ?? 1)) * 100.0
+        let seriesMax = cpuSeries.map(\.value).max() ?? 0
+        return max(100, limit, seriesMax * 1.1)
     }
 
     private func startAutoRefresh() {
         stopAutoRefresh()
+        guard isActive else { return }
         refreshTask = Task {
             while !Task.isCancelled {
                 if autoRefresh {
