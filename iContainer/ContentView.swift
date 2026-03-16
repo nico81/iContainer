@@ -428,6 +428,11 @@ struct ContainerRowView: View {
             Button {
                 onNavigateToTab(2)
             } label: {
+                Label("Shell", systemImage: "terminal")
+            }
+            Button {
+                onNavigateToTab(3)
+            } label: {
                 Label("Logs", systemImage: "doc.plaintext")
             }
             Divider()

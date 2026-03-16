@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import Combine
 
 struct ContainerDetailView: View {
     let containerId: String
@@ -28,10 +29,11 @@ struct ContainerDetailView: View {
                 Picker("", selection: $selectedTab) {
                     Text("Info").tag(0)
                     Text("Stats").tag(1)
-                    Text("Logs").tag(2)
+                    Text("Shell").tag(2)
+                    Text("Logs").tag(3)
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 200)
+                .frame(width: 280)
                 Spacer()
             }
             .padding(.horizontal)
@@ -63,10 +65,9 @@ struct ContainerDetailView: View {
                 .opacity(selectedTab == 1 ? 1 : 0)
                 .allowsHitTesting(selectedTab == 1)
 
-                ContainerLogsView(
+                ContainerShellView(
                     details: details,
                     containerId: containerId,
-                    isActive: selectedTab == 2,
                     onExec: {
                         execOutput = ""
                         showingExecSheet = true
@@ -74,6 +75,18 @@ struct ContainerDetailView: View {
                 )
                 .opacity(selectedTab == 2 ? 1 : 0)
                 .allowsHitTesting(selectedTab == 2)
+
+                ContainerLogsView(
+                    details: details,
+                    containerId: containerId,
+                    isActive: selectedTab == 3,
+                    onExec: {
+                        execOutput = ""
+                        showingExecSheet = true
+                    }
+                )
+                .opacity(selectedTab == 3 ? 1 : 0)
+                .allowsHitTesting(selectedTab == 3)
             }
         }
         .navigationTitle(details?.name ?? "Details")
@@ -355,6 +368,231 @@ private struct ContainerHeaderView: View {
                 .monospaced()
         }
         .padding(.bottom, 8)
+    }
+}
+
+private final class ContainerShellSession: ObservableObject {
+    @Published var output: String = ""
+    @Published var isRunning: Bool = false
+    @Published var lastError: String?
+
+    private let containerId: String
+    private var process: Process?
+    private var inputPipe: Pipe?
+    private var outputPipe: Pipe?
+
+    private static var cache: [String: ContainerShellSession] = [:]
+
+    static func shared(for containerId: String) -> ContainerShellSession {
+        if let existing = cache[containerId] {
+            return existing
+        }
+        let created = ContainerShellSession(containerId: containerId)
+        cache[containerId] = created
+        return created
+    }
+
+    private init(containerId: String) {
+        self.containerId = containerId
+    }
+
+    func startIfNeeded() {
+        guard !isRunning else { return }
+        guard let cliPath = resolveContainerCLIPath() else {
+            lastError = "CLI tool 'container' not found."
+            return
+        }
+
+        let candidates: [[String]] = [
+            ["exec", "-i", containerId, "/bin/sh"],
+            ["exec", containerId, "/bin/sh"]
+        ]
+
+        for args in candidates {
+            if startProcess(cliPath: cliPath, arguments: args) {
+                return
+            }
+        }
+
+        lastError = "Unable to start shell session."
+    }
+
+    func stop() {
+        outputPipe?.fileHandleForReading.readabilityHandler = nil
+        process?.terminate()
+        process = nil
+        inputPipe = nil
+        outputPipe = nil
+        isRunning = false
+    }
+
+    func send(_ command: String) {
+        let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        if !isRunning {
+            startIfNeeded()
+        }
+        guard let data = (trimmed + "\n").data(using: .utf8) else { return }
+        inputPipe?.fileHandleForWriting.write(data)
+    }
+
+    func clear() {
+        output = ""
+    }
+
+    private func startProcess(cliPath: String, arguments: [String]) -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: cliPath)
+        process.arguments = arguments
+
+        let input = Pipe()
+        let output = Pipe()
+        process.standardInput = input
+        process.standardOutput = output
+        process.standardError = output
+
+        output.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            let data = handle.availableData
+            guard !data.isEmpty else { return }
+            guard let chunk = String(data: data, encoding: .utf8) else { return }
+            DispatchQueue.main.async {
+                self?.output.append(contentsOf: chunk)
+            }
+        }
+
+        process.terminationHandler = { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.isRunning = false
+                if self?.output.isEmpty == true {
+                    self?.lastError = "Shell session ended without output."
+                }
+            }
+        }
+
+        do {
+            try process.run()
+            self.process = process
+            self.inputPipe = input
+            self.outputPipe = output
+            self.lastError = nil
+            self.isRunning = true
+            if self.output.isEmpty {
+                self.output = "[shell started]\n"
+            } else {
+                self.output.append("\n[shell restarted]\n")
+            }
+            return true
+        } catch {
+            output.fileHandleForReading.readabilityHandler = nil
+            return false
+        }
+    }
+
+    private func resolveContainerCLIPath() -> String? {
+        let candidates = [
+            "/usr/local/bin/container",
+            "/opt/homebrew/bin/container"
+        ]
+        for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
+            return path
+        }
+        if let pathEnv = ProcessInfo.processInfo.environment["PATH"] {
+            for entry in pathEnv.split(separator: ":") {
+                let path = String(entry) + "/container"
+                if FileManager.default.isExecutableFile(atPath: path) {
+                    return path
+                }
+            }
+        }
+        return nil
+    }
+}
+
+private struct ContainerShellView: View {
+    let details: ContainerDetails?
+    let containerId: String
+    let onExec: () -> Void
+    @StateObject private var session: ContainerShellSession
+    @State private var command: String = ""
+    @State private var autoScroll = true
+
+    init(details: ContainerDetails?, containerId: String, onExec: @escaping () -> Void) {
+        self.details = details
+        self.containerId = containerId
+        self.onExec = onExec
+        _session = StateObject(wrappedValue: ContainerShellSession.shared(for: containerId))
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let shellHeight = max(280, proxy.size.height - 240)
+            VStack(alignment: .leading, spacing: 24) {
+                if let details = details {
+                    ContainerHeaderView(details: details, onExec: onExec)
+                } else {
+                    ProgressView("Loading Details...")
+                        .padding(.top, 12)
+                }
+
+                DetailSection(title: "Shell", icon: "terminal") {
+                    VStack(spacing: 12) {
+                        HStack(spacing: 12) {
+                            Toggle("Auto Scroll", isOn: $autoScroll)
+                                .toggleStyle(.switch)
+                            Spacer()
+                            Button("Clear") {
+                                session.clear()
+                            }
+                        }
+
+                        ScrollViewReader { scrollProxy in
+                            ScrollView {
+                                Text(session.output.isEmpty ? "Shell output will appear here." : session.output)
+                                    .font(.caption.monospaced())
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                Color.clear
+                                    .frame(height: 1)
+                                    .id("SHELL_BOTTOM")
+                            }
+                            .frame(height: shellHeight)
+                            .onChange(of: session.output) { _, _ in
+                                guard autoScroll else { return }
+                                withAnimation(.easeOut(duration: 0.15)) {
+                                    scrollProxy.scrollTo("SHELL_BOTTOM", anchor: .bottom)
+                                }
+                            }
+                        }
+
+                        HStack(spacing: 12) {
+                            TextField("Command", text: $command)
+                                .textFieldStyle(.roundedBorder)
+                                .onSubmit {
+                                    let toSend = command
+                                    command = ""
+                                    session.send(toSend)
+                                }
+                            Button("Send") {
+                                let toSend = command
+                                command = ""
+                                session.send(toSend)
+                            }
+                            .disabled(command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+                    }
+                }
+
+                if let error = session.lastError, !error.isEmpty {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding()
+        }
+        .onAppear {
+            session.startIfNeeded()
+        }
     }
 }
 
