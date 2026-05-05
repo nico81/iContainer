@@ -33,6 +33,17 @@ struct ContentView: View {
     @State private var registryUsername = ""
     @State private var registryPassword = ""
     @State private var isLoggingInRegistry = false
+    @State private var showingEditContainerSheet = false
+    @State private var editingContainerId: String?
+    @State private var editImage = ""
+    @State private var editName = ""
+    @State private var editPorts = ""
+    @State private var editHostPort = ""
+    @State private var editContainerPort = ""
+    @State private var editVolumes = ""
+    @State private var editEnv = ""
+    @State private var isLoadingContainerEditSettings = false
+    @State private var isSavingContainerEdit = false
     @State private var selection: SidebarSelection?
 
     var body: some View {
@@ -56,6 +67,9 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingRegistryLoginSheet) {
             registryLoginSheet
+        }
+        .sheet(isPresented: $showingEditContainerSheet) {
+            editContainerSheet
         }
         .alert("Pull Image", isPresented: $showingPullImageAlert) {
             TextField("repository:tag", text: $pullImageReference)
@@ -101,6 +115,9 @@ struct ContentView: View {
                                 container: container,
                                 onNavigateToTab: { tab in
                                     selection = .container(ContainerNavigationTarget(id: container.id, tab: tab))
+                                },
+                                onEditSettings: {
+                                    openEditContainerSheet(containerId: container.id)
                                 }
                             )
                         }
@@ -211,51 +228,15 @@ struct ContentView: View {
             TextField("Name (optional)", text: $createName)
                 .textFieldStyle(.roundedBorder)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Published Ports")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                HStack(spacing: 8) {
-                    TextField("Local port (host) e.g. 8080", text: $createHostPort)
-                        .textFieldStyle(.roundedBorder)
-                    Text(":")
-                        .foregroundColor(.secondary)
-                    TextField("Container port e.g. 80", text: $createContainerPort)
-                        .textFieldStyle(.roundedBorder)
-                    Button("Add") {
-                        addPortMapping()
-                    }
-                    .disabled(createHostPort.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || createContainerPort.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-                TextField("Mappings list (host:container), e.g. 8080:80, 8443:443", text: $createPorts, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                if portMappings.isEmpty {
-                    Text("No port mappings added yet.")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                } else {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(portMappings, id: \.self) { mapping in
-                            HStack {
-                                Text(mapping)
-                                    .font(.caption.monospaced())
-                                Spacer()
-                                Button {
-                                    removePortMapping(mapping)
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                }
-                                .buttonStyle(.plain)
-                                .foregroundColor(.secondary)
-                            }
-                        }
-                    }
-                    .padding(.top, 2)
-                }
-                Text("Format: local(host):external(container)")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-            }
+            PortMappingsEditor(
+                mappingsText: $createPorts,
+                hostPort: $createHostPort,
+                containerPort: $createContainerPort,
+                isLoading: false,
+                emptyText: "No port mappings added yet.",
+                addAction: addPortMapping,
+                removeAction: removePortMapping
+            )
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Volumes")
@@ -293,6 +274,69 @@ struct ContentView: View {
             }
 
             Text("Use comma or newline to add multiple ports, volumes, or env entries.")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+        .padding()
+        .frame(minWidth: 620, minHeight: 420)
+    }
+
+    private var editContainerSheet: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Edit Container Settings")
+                .font(.headline)
+
+            TextField("Image (required)", text: $editImage)
+                .textFieldStyle(.roundedBorder)
+            TextField("Name (optional)", text: $editName)
+                .textFieldStyle(.roundedBorder)
+
+            PortMappingsEditor(
+                mappingsText: $editPorts,
+                hostPort: $editHostPort,
+                containerPort: $editContainerPort,
+                isLoading: isLoadingContainerEditSettings,
+                emptyText: "No port mappings configured.",
+                addAction: addEditPortMapping,
+                removeAction: removeEditPortMapping
+            )
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Volumes")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                TextField("e.g. /host/path:/container/path", text: $editVolumes, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Environment Variables")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                TextField("e.g. KEY=value", text: $editEnv, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            HStack {
+                Button("Save") {
+                    runSaveContainerEdit()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(isLoadingContainerEditSettings || isSavingContainerEdit || editImage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                if isLoadingContainerEditSettings || isSavingContainerEdit {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                }
+
+                Spacer()
+
+                Button("Close") {
+                    showingEditContainerSheet = false
+                }
+            }
+
+            Text("Applying settings recreates the container with the new configuration.")
                 .font(.caption2)
                 .foregroundColor(.secondary)
         }
@@ -380,6 +424,58 @@ struct ContentView: View {
         }
     }
 
+    private func openEditContainerSheet(containerId: String) {
+        editingContainerId = containerId
+        let listed = containerManager.containers.first(where: { $0.id == containerId })
+        editImage = listed?.image ?? ""
+        editName = listed?.name ?? ""
+        editPorts = ""
+        editHostPort = ""
+        editContainerPort = ""
+        editVolumes = ""
+        editEnv = ""
+        isLoadingContainerEditSettings = true
+        showingEditContainerSheet = true
+
+        Task {
+            if let settings = await containerManager.editableSettings(containerId: containerId) {
+                editImage = settings.image
+                editName = settings.name
+                editPorts = settings.ports.joined(separator: ", ")
+                editVolumes = settings.volumes.joined(separator: ", ")
+                editEnv = settings.environment.joined(separator: ", ")
+            }
+            isLoadingContainerEditSettings = false
+        }
+    }
+
+    private func runSaveContainerEdit() {
+        guard let containerId = editingContainerId, !isSavingContainerEdit else { return }
+        let image = editImage.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !image.isEmpty else { return }
+
+        isSavingContainerEdit = true
+        let name = editName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let ports = parseList(editPorts)
+        let volumes = parseList(editVolumes)
+        let env = parseList(editEnv)
+
+        Task {
+            let success = await containerManager.updateContainerSettings(
+                containerId: containerId,
+                image: image,
+                name: name.isEmpty ? nil : name,
+                publishedPorts: ports,
+                volumes: volumes,
+                environment: env
+            )
+            isSavingContainerEdit = false
+            if success {
+                showingEditContainerSheet = false
+            }
+        }
+    }
+
     private var isRegistryAuthError: Bool {
         guard let message = containerManager.lastErrorMessage else { return false }
         return ContainerizationWrapper.isRegistryAuthError(message)
@@ -437,13 +533,36 @@ struct ContentView: View {
         createContainerPort = ""
     }
 
+    private func addEditPortMapping() {
+        let host = editHostPort.trimmingCharacters(in: .whitespacesAndNewlines)
+        let container = editContainerPort.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !host.isEmpty, !container.isEmpty else { return }
+        let mapping = "\(host):\(container)"
+        if editPorts.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            editPorts = mapping
+        } else {
+            editPorts += ", \(mapping)"
+        }
+        editHostPort = ""
+        editContainerPort = ""
+    }
+
     private var portMappings: [String] {
         parseList(createPorts)
+    }
+
+    private var editPortMappings: [String] {
+        parseList(editPorts)
     }
 
     private func removePortMapping(_ mapping: String) {
         let updated = portMappings.filter { $0 != mapping }
         createPorts = updated.joined(separator: ", ")
+    }
+
+    private func removeEditPortMapping(_ mapping: String) {
+        let updated = editPortMappings.filter { $0 != mapping }
+        editPorts = updated.joined(separator: ", ")
     }
 }
 
@@ -501,9 +620,98 @@ struct ServiceStatusView: View {
     }
 }
 
+private struct PortMappingsEditor: View {
+    @Binding var mappingsText: String
+    @Binding var hostPort: String
+    @Binding var containerPort: String
+    let isLoading: Bool
+    let emptyText: String
+    let addAction: () -> Void
+    let removeAction: (String) -> Void
+
+    private var mappings: [String] {
+        mappingsText
+            .replacingOccurrences(of: "\n", with: ",")
+            .split(separator: ",")
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Published Ports")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("Configured Ports")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                    Spacer()
+                    if !mappings.isEmpty {
+                        Text("\(mappings.count)")
+                            .font(.caption.monospacedDigit())
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                if mappings.isEmpty {
+                    Text(isLoading ? "Loading port mappings..." : emptyText)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 6)
+                } else {
+                    ForEach(mappings, id: \.self) { mapping in
+                        HStack(spacing: 8) {
+                            Image(systemName: "network")
+                                .foregroundColor(.secondary)
+                            Text(mapping)
+                                .font(.caption.monospaced())
+                            Spacer()
+                            Button {
+                                removeAction(mapping)
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundColor(.secondary)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            }
+            .padding(10)
+            .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+
+            HStack(spacing: 8) {
+                TextField("Local port (host) e.g. 8080", text: $hostPort)
+                    .textFieldStyle(.roundedBorder)
+                Text(":")
+                    .foregroundColor(.secondary)
+                TextField("Container port e.g. 80", text: $containerPort)
+                    .textFieldStyle(.roundedBorder)
+                Button("Add") {
+                    addAction()
+                }
+                .disabled(hostPort.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || containerPort.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+
+            TextField("Mappings list (host:container), e.g. 8080:80, 8443:443", text: $mappingsText, axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+
+            Text("Format: local(host):external(container)")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+    }
+}
+
 struct ContainerRowView: View {
     let container: Container
     let onNavigateToTab: (Int) -> Void
+    let onEditSettings: () -> Void
     @EnvironmentObject var containerManager: ContainerizationWrapper
     @State private var showingDeleteConfirmation = false
     @State private var showingStopConfirmation = false
@@ -632,6 +840,12 @@ struct ContainerRowView: View {
                 onNavigateToTab(3)
             } label: {
                 Label("Logs", systemImage: "doc.plaintext")
+            }
+            Divider()
+            Button {
+                onEditSettings()
+            } label: {
+                Label("Edit", systemImage: "slider.horizontal.3")
             }
             Divider()
             Button(role: .destructive) {

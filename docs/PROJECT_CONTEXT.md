@@ -29,6 +29,13 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
   - `Registry Login` is available from system service context menu
   - registry auth status is shown only in service detail page (not in left sidebar)
   - registry auth panel is rendered after all other service detail sections
+- Container settings editing:
+  - available from container context menu (`Edit`)
+  - opens a guided edit sheet prefilled from inspect data
+  - name and image use sidebar/list data as immediate fallback while inspect loads
+  - fully qualified inspect hostnames such as `name.test.` are normalized to `name`
+  - save is disabled while edit settings are loading to avoid accidental loss of existing values
+  - applying changes recreates the container with updated settings
 
 ## Shell Model
 - Container shell is persistent per container (session cache by `containerId`).

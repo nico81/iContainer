@@ -48,12 +48,18 @@ Keep iContainer clear, predictable, and fast for container operations, with mini
 - `Exec` flow is deprecated in UI and must not be reintroduced casually.
 - Preferred interaction path is `Shell` tab with persistent session behavior.
 - Context menu entries must map 1:1 to real tab indexes (`Info`, `Stats`, `Shell`, `Logs`).
+- Context menu should also expose `Edit` for container reconfiguration.
+- Editing settings must clearly communicate that apply action recreates the container.
+- Edit sheets must prefill existing values before allowing save, especially ports, volumes, env, image, and name.
+- The container context menu label for reconfiguration is `Edit`.
+- Create and edit forms must stay visually coherent and share the same ports interaction.
 
 ## Create Container Form
 - Ports input must clearly distinguish:
   - local host port
   - container/exposed port
 - Prefer guided composition (`host:container`) over ambiguous free-text-only entry.
+- Existing/configured ports must be visually emphasized above the add-port controls.
 
 ## Shell Experience
 - Shell output area should support selection/copy.

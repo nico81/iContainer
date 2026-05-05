@@ -5,7 +5,24 @@ Short, practical log of recent product/code decisions discussed in chat and impl
 
 ## Timeline (latest first)
 
+### 2026-05-05
+- Refined container create/edit consistency:
+  - create and edit now share the same ports editor UI
+  - configured ports are shown above the add-port form and made more prominent
+  - container context menu action label shortened from `Edit Settings` to `Edit`
+- Fixed edit name prefill from inspect hostnames:
+  - fully qualified hostnames such as `name.test.` are normalized back to `name`
+- Fixed container settings edit prefill:
+  - edit sheet now uses robust raw inspect parsing instead of only minimal `Decodable` fields
+  - name and image are prefilled immediately from the container list as fallback
+  - ports, volumes, and env are loaded from inspect data before save is enabled
+  - edit ports now show a visible mapping list with remove actions, matching create flow
+
 ### 2026-05-04
+- Added container settings edit flow:
+  - new `Edit Settings` action in container context menu
+  - new edit sheet prefilled from container inspect data (image, name, ports, volumes, env)
+  - save flow applies changes by recreate strategy (stop/delete/create and restart if previously running)
 - Improved create-container ports UX:
   - added separate inputs for local host port and container port
   - added `Add` action to compose mapping automatically (`host:container`)

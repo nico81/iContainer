@@ -322,6 +322,61 @@ class ContainerizationWrapper: ObservableObject {
         }
     }
 
+    func updateContainerSettings(
+        containerId: String,
+        image: String,
+        name: String?,
+        publishedPorts: [String] = [],
+        volumes: [String] = [],
+        environment: [String] = []
+    ) async -> Bool {
+        guard let existing = containers.first(where: { $0.id == containerId }) else {
+            lastErrorMessage = "Container not found."
+            return false
+        }
+
+        lastErrorMessage = nil
+        let wasRunning = existing.status == .running
+
+        if wasRunning {
+            await stopContainer(containerId: containerId)
+        }
+
+        await deleteContainer(containerId: containerId)
+        if lastErrorMessage != nil {
+            return false
+        }
+
+        await createContainer(
+            image: image,
+            name: name,
+            publishedPorts: publishedPorts,
+            volumes: volumes,
+            environment: environment
+        )
+        if lastErrorMessage != nil {
+            return false
+        }
+
+        await refreshContainers()
+        if wasRunning {
+            if let targetName = name?.trimmingCharacters(in: .whitespacesAndNewlines), !targetName.isEmpty,
+               let recreated = containers.first(where: { $0.name == targetName }) {
+                await startContainer(containerId: recreated.id)
+            } else {
+                let candidates = containers.filter {
+                    ($0.image ?? "") == image.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                if let recreated = candidates.last {
+                    await startContainer(containerId: recreated.id)
+                }
+            }
+        }
+
+        await refreshContainers()
+        return lastErrorMessage == nil
+    }
+
     func refreshRegistryAuthStatus(showLoadingState: Bool = false) async {
         if showLoadingState || registryAuthState == .unknown {
             registryAuthState = .checking
@@ -463,6 +518,29 @@ class ContainerizationWrapper: ObservableObject {
         }
     }
 
+    func editableSettings(containerId: String) async -> ContainerEditableSettings? {
+        let listed = containers.first(where: { $0.id == containerId })
+        guard let raw = await inspectContainerRaw(containerId: containerId),
+              var settings = Self.parseEditableSettings(raw) else {
+            guard let listed else { return nil }
+            return ContainerEditableSettings(
+                image: listed.image ?? "",
+                name: listed.name,
+                ports: [],
+                volumes: [],
+                environment: []
+            )
+        }
+
+        if settings.image.isEmpty {
+            settings.image = listed?.image ?? ""
+        }
+        if settings.name.isEmpty {
+            settings.name = listed?.name ?? ""
+        }
+        return settings
+    }
+
     func fetchContainerLogs(containerId: String, tail: Int? = nil) async -> String? {
         let tailArgs: [String]
         if let tail {
@@ -601,6 +679,115 @@ private extension ContainerizationWrapper {
             }
             .filter { !$0.isEmpty && !$0.lowercased().contains("host") && !$0.lowercased().contains("registry") }
     }
+
+    static func parseEditableSettings(_ raw: String) -> ContainerEditableSettings? {
+        guard let data = raw.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data, options: []) else {
+            return nil
+        }
+
+        let root: [String: Any]
+        if let array = json as? [[String: Any]], let first = array.first {
+            root = first
+        } else if let object = json as? [String: Any] {
+            root = object
+        } else {
+            return nil
+        }
+
+        let config = root["configuration"] as? [String: Any] ?? [:]
+        let imageDict = config["image"] as? [String: Any] ?? [:]
+        let initProcess = config["initProcess"] as? [String: Any] ?? [:]
+        let networks = root["networks"] as? [[String: Any]] ?? []
+        let configNetworks = config["networks"] as? [[String: Any]] ?? []
+        let sockets = config["publishedSockets"] as? [[String: Any]] ?? []
+        let publishedPorts = config["publishedPorts"] as? [[String: Any]] ?? []
+        let mounts = config["mounts"] as? [[String: Any]] ?? []
+
+        let image = stringIn(imageDict, keys: ["reference"]) ?? stringIn(root, keys: ["image"]) ?? ""
+        let rawName = stringIn(config, keys: ["hostname"])
+            ?? stringIn(networks.first ?? [:], keys: ["hostname"])
+            ?? stringIn(configNetworks.first?["options"] as? [String: Any] ?? [:], keys: ["hostname"])
+            ?? stringIn(config, keys: ["id"])
+            ?? ""
+        let name = normalizedContainerName(rawName)
+
+        var ports = sockets.compactMap { socket -> String? in
+            guard let host = intIn(socket, keys: ["hostPort"]),
+                  let container = intIn(socket, keys: ["containerPort"]) else {
+                return nil
+            }
+            return "\(host):\(container)"
+        }
+        ports += publishedPorts.compactMap { port -> String? in
+            guard let host = intIn(port, keys: ["hostPort"]),
+                  let container = intIn(port, keys: ["containerPort"]) else {
+                return nil
+            }
+            return "\(host):\(container)"
+        }
+        ports = Array(Set(ports)).sorted()
+
+        let volumes = mounts.compactMap { mount -> String? in
+            guard let source = stringIn(mount, keys: ["source"]),
+                  let destination = stringIn(mount, keys: ["destination"]) else {
+                return nil
+            }
+            return "\(source):\(destination)"
+        }
+
+        return ContainerEditableSettings(
+            image: image,
+            name: name,
+            ports: ports,
+            volumes: volumes,
+            environment: stringArrayIn(initProcess, keys: ["environment"])
+        )
+    }
+
+    static func stringIn(_ dict: [String: Any], keys: [String]) -> String? {
+        for key in keys {
+            if let value = dict[key] as? String, !value.isEmpty {
+                return value
+            }
+            if let value = dict[key] as? NSNumber {
+                return value.stringValue
+            }
+        }
+        return nil
+    }
+
+    static func intIn(_ dict: [String: Any], keys: [String]) -> Int? {
+        for key in keys {
+            if let value = dict[key] as? Int {
+                return value
+            }
+            if let value = dict[key] as? NSNumber {
+                return value.intValue
+            }
+            if let value = dict[key] as? String, let parsed = Int(value) {
+                return parsed
+            }
+        }
+        return nil
+    }
+
+    static func stringArrayIn(_ dict: [String: Any], keys: [String]) -> [String] {
+        for key in keys {
+            if let value = dict[key] as? [String] {
+                return value
+            }
+        }
+        return []
+    }
+
+    static func normalizedContainerName(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasSuffix("."), let first = trimmed.split(separator: ".").first else {
+            return trimmed
+        }
+        return String(first)
+    }
 }
 
 enum DependencyError: Error, Identifiable {
@@ -638,6 +825,14 @@ struct ContainerCLI: Decodable {
     struct Network: Decodable {
         let address: String?
     }
+}
+
+struct ContainerEditableSettings: Equatable {
+    var image: String
+    var name: String
+    var ports: [String]
+    var volumes: [String]
+    var environment: [String]
 }
 
 struct ContainerDetails: Decodable, Equatable {
