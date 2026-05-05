@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ServiceDetailView: View {
     @EnvironmentObject var serviceManager: ServiceManager
+    @EnvironmentObject var containerManager: ContainerizationWrapper
     
     var body: some View {
         ScrollView {
@@ -43,6 +44,13 @@ struct ServiceDetailView: View {
                             .textSelection(.enabled)
                             .foregroundColor(.secondary)
                     }
+
+                    DetailSection(title: "Registry Authentication", icon: "person.badge.key") {
+                        DetailRow(label: "Status", value: registryStatusText)
+                        if let host = registryPrimaryHost {
+                            DetailRow(label: "Host", value: host)
+                        }
+                    }
                 } else {
                     VStack(spacing: 16) {
                         if serviceManager.isServiceRunning {
@@ -77,5 +85,25 @@ struct ServiceDetailView: View {
             return "Not checked yet"
         }
         return date.formatted(date: .abbreviated, time: .standard)
+    }
+
+    private var registryStatusText: String {
+        switch containerManager.registryAuthState {
+        case .unknown:
+            return "Unknown"
+        case .checking:
+            return "Checking..."
+        case .authenticated:
+            return "Authenticated"
+        case .notAuthenticated:
+            return "Not authenticated"
+        }
+    }
+
+    private var registryPrimaryHost: String? {
+        if case .authenticated(let hosts) = containerManager.registryAuthState {
+            return hosts.first
+        }
+        return nil
     }
 }

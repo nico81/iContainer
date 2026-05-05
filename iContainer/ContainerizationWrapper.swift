@@ -4,12 +4,20 @@ import Logging
 
 @MainActor
 class ContainerizationWrapper: ObservableObject {
+    enum RegistryAuthState: Equatable {
+        case unknown
+        case checking
+        case authenticated(hosts: [String])
+        case notAuthenticated
+    }
+
     @Published var containers: [Container] = []
     @Published var updatingContainerIDs: Set<String> = []
     @Published var missingDependencies: [DependencyError] = []
     @Published var images: [ContainerImage] = []
     @Published var updatingImageIDs: Set<String> = []
     @Published var lastErrorMessage: String?
+    @Published var registryAuthState: RegistryAuthState = .unknown
     private let logger = Logger(label: "iContainer")
     private var timer: Timer?
 
@@ -33,11 +41,13 @@ class ContainerizationWrapper: ObservableObject {
             Task {
                 await self?.refreshContainers()
                 await self?.refreshImages()
+                await self?.refreshRegistryAuthStatus()
             }
         }
         Task {
             await refreshContainers()
             await refreshImages()
+            await refreshRegistryAuthStatus()
         }
     }
 
@@ -46,9 +56,9 @@ class ContainerizationWrapper: ObservableObject {
     }
     
     // MARK: - Terminal command runner
-    private func runCommand(_ arguments: [String]) async throws -> String {
+    private func runCommand(_ arguments: [String], standardInput: String? = nil) async throws -> String {
         let result = try await Task.detached(priority: .utility) {
-            try Self.runCommandBlocking(arguments)
+            try Self.runCommandBlocking(arguments, standardInput: standardInput)
         }.value
         if result.status != 0 {
             let commandText = "container " + arguments.joined(separator: " ")
@@ -61,7 +71,7 @@ class ContainerizationWrapper: ObservableObject {
         return result.output
     }
 
-    nonisolated private static func runCommandBlocking(_ arguments: [String]) throws -> (output: String, status: Int32) {
+    nonisolated private static func runCommandBlocking(_ arguments: [String], standardInput: String? = nil) throws -> (output: String, status: Int32) {
         guard let cliPath = resolveCLIPath() else {
             throw NSError(domain: "iContainer", code: 1, userInfo: [NSLocalizedDescriptionKey: "CLI 'container' non trovata"])
         }
@@ -69,9 +79,19 @@ class ContainerizationWrapper: ObservableObject {
         process.executableURL = URL(fileURLWithPath: cliPath)
         process.arguments = arguments
         let pipe = Pipe()
+        let inputPipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
+        if standardInput != nil {
+            process.standardInput = inputPipe
+        }
         try process.run()
+        if let standardInput {
+            if let inputData = standardInput.data(using: .utf8) {
+                inputPipe.fileHandleForWriting.write(inputData)
+            }
+            try? inputPipe.fileHandleForWriting.close()
+        }
         process.waitUntilExit()
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         guard let output = String(data: data, encoding: .utf8) else {
@@ -155,9 +175,13 @@ class ContainerizationWrapper: ObservableObject {
         do {
             _ = try await runCommand(["image", "pull", trimmed])
             await refreshImages()
+            await refreshRegistryAuthStatus()
         } catch {
             logger.error("Errore nel pull dell'immagine: \(error)")
             lastErrorMessage = error.localizedDescription
+            if Self.isRegistryAuthError(error.localizedDescription) {
+                registryAuthState = .notAuthenticated
+            }
         }
     }
 
@@ -243,13 +267,177 @@ class ContainerizationWrapper: ObservableObject {
         }
     }
 
-    func createContainer(name: String) async {
+    func createContainer(
+        image: String,
+        name: String?,
+        publishedPorts: [String] = [],
+        volumes: [String] = [],
+        environment: [String] = []
+    ) async {
+        let trimmedImage = image.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedImage.isEmpty else {
+            lastErrorMessage = "Image is required."
+            return
+        }
+
+        var args: [String] = ["create"]
+
+        if let name, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            args += ["--name", name.trimmingCharacters(in: .whitespacesAndNewlines)]
+        }
+
+        for env in environment {
+            let value = env.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !value.isEmpty {
+                args += ["-e", value]
+            }
+        }
+
+        for port in publishedPorts {
+            let value = port.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !value.isEmpty {
+                args += ["-p", value]
+            }
+        }
+
+        for volume in volumes {
+            let value = volume.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !value.isEmpty {
+                args += ["-v", value]
+            }
+        }
+
+        args.append(trimmedImage)
+
         do {
-            _ = try await runCommand(["create", name])
+            _ = try await runCommand(args)
             await refreshContainers()
+            await refreshRegistryAuthStatus()
         } catch {
             logger.error("Errore nella creazione del container: \(error)")
+            lastErrorMessage = error.localizedDescription
+            if Self.isRegistryAuthError(error.localizedDescription) {
+                registryAuthState = .notAuthenticated
+            }
         }
+    }
+
+    func refreshRegistryAuthStatus(showLoadingState: Bool = false) async {
+        if showLoadingState || registryAuthState == .unknown {
+            registryAuthState = .checking
+        }
+        let commandOptions: [[String]] = [
+            ["registry", "ls"],
+            ["r", "ls"],
+            ["registry", "list"],
+            ["r", "list"]
+        ]
+        for args in commandOptions {
+            do {
+                let output = try await runCommand(args)
+                if Self.looksLikeTopLevelHelp(output) {
+                    continue
+                }
+                let hosts = Self.parseRegistryHosts(output)
+                registryAuthState = hosts.isEmpty ? .notAuthenticated : .authenticated(hosts: hosts)
+                return
+            } catch {
+                let message = error.localizedDescription.lowercased()
+                if message.contains("unknown subcommand")
+                    || message.contains("invalid option")
+                    || message.contains("help information")
+                    || message.contains("usage:") {
+                    continue
+                }
+                if Self.isRegistryAuthError(error.localizedDescription) {
+                    registryAuthState = .notAuthenticated
+                    return
+                }
+                break
+            }
+        }
+        registryAuthState = .unknown
+    }
+
+    func loginRegistry(host: String, username: String, password: String) async -> Bool {
+        let trimmedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedUser = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedHost.isEmpty, !trimmedUser.isEmpty, !password.isEmpty else {
+            lastErrorMessage = "Host, username e password sono obbligatori."
+            return false
+        }
+
+        lastErrorMessage = nil
+        let hostsToTry = Self.registryLoginHosts(for: trimmedHost)
+        var didLoginAtLeastOnce = false
+        var lastMeaningfulError: String?
+
+        for candidateHost in hostsToTry {
+            let passwordInput = password + "\n"
+            let commandOptions: [([String], String?)] = [
+                (["registry", "login", candidateHost, "--username", trimmedUser, "--password-stdin"], passwordInput),
+                (["r", "login", candidateHost, "--username", trimmedUser, "--password-stdin"], passwordInput),
+                (["registry", "login", candidateHost, "--username", trimmedUser, "--password", password], nil),
+                (["r", "login", candidateHost, "--username", trimmedUser, "--password", password], nil)
+            ]
+
+            for (args, input) in commandOptions {
+                do {
+                    let output = try await runCommand(args, standardInput: input)
+                    if Self.looksLikeTopLevelHelp(output) {
+                        continue
+                    }
+                    didLoginAtLeastOnce = true
+                    break
+                } catch {
+                    let message = error.localizedDescription.lowercased()
+                    if message.contains("unknown subcommand")
+                        || message.contains("invalid option")
+                        || message.contains("help information")
+                        || message.contains("usage:") {
+                        continue
+                    }
+                    lastMeaningfulError = error.localizedDescription
+                }
+            }
+        }
+
+        await refreshRegistryAuthStatus(showLoadingState: true)
+        if didLoginAtLeastOnce,
+           case .authenticated = registryAuthState {
+            return true
+        }
+        lastErrorMessage = lastMeaningfulError ?? "Login registry non verificata. Prova `container registry login docker.io --username <user>` da terminale e poi riprova."
+        return false
+    }
+
+    func registryLoginCommand(host: String, username: String) -> String {
+        "container registry login \(host) --username \(username)"
+    }
+
+    static func isRegistryAuthError(_ message: String) -> Bool {
+        let lower = message.lowercased()
+        return lower.contains("401 unauthorized")
+            || lower.contains("unauthorized")
+            || lower.contains("authentication required")
+            || lower.contains("no credentials found for host")
+            || lower.contains("insufficient_scope")
+            || lower.contains("denied")
+    }
+
+    static func looksLikeTopLevelHelp(_ output: String) -> Bool {
+        let lower = output.lowercased()
+        return lower.contains("overview: a container platform for macos")
+            && lower.contains("container subcommands:")
+            && lower.contains("image subcommands:")
+    }
+
+    static func registryLoginHosts(for host: String) -> [String] {
+        let normalized = host.lowercased()
+        if normalized == "registry-1.docker.io" || normalized == "docker.io" || normalized == "index.docker.io" {
+            return ["registry-1.docker.io", "docker.io", "index.docker.io"]
+        }
+        return [host]
     }
     
     func inspectContainer(containerId: String) async -> ContainerDetails? {
@@ -399,6 +587,19 @@ private extension ContainerizationWrapper {
             }
         }
         return nil
+    }
+
+    static func parseRegistryHosts(_ output: String) -> [String] {
+        output
+            .split(whereSeparator: \.isNewline)
+            .map { line in
+                line
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .split(whereSeparator: \.isWhitespace)
+                    .first
+                    .map(String.init) ?? ""
+            }
+            .filter { !$0.isEmpty && !$0.lowercased().contains("host") && !$0.lowercased().contains("registry") }
     }
 }
 

@@ -20,6 +20,10 @@ Keep iContainer clear, predictable, and fast for container operations, with mini
   - `Stats`
   - `Shell`
   - `Logs`
+- Registry auth visibility:
+  - do not show registry auth state in left sidebar status row
+  - show registry auth only in Service Detail page
+  - place registry auth section after status/version/path/output sections (last block)
 
 ## Service State Rules
 - When container system service is **running**:
@@ -45,6 +49,12 @@ Keep iContainer clear, predictable, and fast for container operations, with mini
 - Preferred interaction path is `Shell` tab with persistent session behavior.
 - Context menu entries must map 1:1 to real tab indexes (`Info`, `Stats`, `Shell`, `Logs`).
 
+## Create Container Form
+- Ports input must clearly distinguish:
+  - local host port
+  - container/exposed port
+- Prefer guided composition (`host:container`) over ambiguous free-text-only entry.
+
 ## Shell Experience
 - Shell output area should support selection/copy.
 - Auto-scroll should be user-controllable.
@@ -61,6 +71,10 @@ Keep iContainer clear, predictable, and fast for container operations, with mini
 - Service detail header text standard:
   - `Apple Container System Service`
 - Avoid mixing synonyms for the same concept across views.
+- For registry auth failures, prefer explicit guidance with action choices:
+  - `Login now`
+  - `Copy command`
+  - `Cancel`
 
 ## Visual Consistency
 - Reuse existing component language (`DetailSection`, `DetailRow`, status badge style).
@@ -77,4 +91,3 @@ Keep iContainer clear, predictable, and fast for container operations, with mini
 - Verify shell still works after stopping/starting service.
 - Verify hidden actions are truly hidden (not only disabled) where specified.
 - Verify no stale copy remains for removed features (e.g., old Exec references).
-

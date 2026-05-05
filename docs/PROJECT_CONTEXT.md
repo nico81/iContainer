@@ -23,6 +23,12 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
   - pull-image icon is hidden when service is stopped
 - add-container (`+`) toolbar icon is hidden when service is stopped
 - `Exec` feature has been removed from UI (replaced by persistent shell workflow).
+- Registry auth UX:
+  - auth errors (`401`, `unauthorized`, missing credentials) are detected and shown with guided actions
+  - `Operation Failed` can show `Login now`, `Copy command`, `Cancel` for registry auth failures
+  - `Registry Login` is available from system service context menu
+  - registry auth status is shown only in service detail page (not in left sidebar)
+  - registry auth panel is rendered after all other service detail sections
 
 ## Shell Model
 - Container shell is persistent per container (session cache by `containerId`).
@@ -40,3 +46,10 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
   - `pkill -x iContainer || true`
   - `open /Users/nico/Library/Developer/Xcode/DerivedData/iContainer-fpbjeiozuugbpjglzrjgziqvmlne/Build/Products/Debug/iContainer.app`
 
+## Registry Auth Notes
+- Current login flow tries Docker Hub aliases:
+  - `registry-1.docker.io`
+  - `docker.io`
+  - `index.docker.io`
+- Status parsing guards against false positives:
+  - top-level CLI help output must never be treated as authenticated state

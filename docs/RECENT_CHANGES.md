@@ -6,6 +6,24 @@ Short, practical log of recent product/code decisions discussed in chat and impl
 ## Timeline (latest first)
 
 ### 2026-05-04
+- Improved create-container ports UX:
+  - added separate inputs for local host port and container port
+  - added `Add` action to compose mapping automatically (`host:container`)
+  - added visible mappings list under the input to confirm inserted ports
+  - added remove action per mapping
+  - clarified label/copy to distinguish local vs external/container side
+- Added registry authentication UX improvements:
+  - auth-aware error handling for pull/create failures (`Login now`, `Copy command`, `Cancel`)
+  - in-app `Registry Login` sheet (host, username, password/token)
+  - `Registry Login` voice in System Service context menu
+  - registry auth status block added in Service Detail page
+- Fixed registry status false-positive:
+  - top-level CLI help output is no longer interpreted as authenticated login
+  - Docker Hub login now tries host aliases (`registry-1.docker.io`, `docker.io`, `index.docker.io`)
+- Reduced registry auth block flicker:
+  - removed duplicate refresh in Service Detail view task
+  - registry status refresh is now silent by default (no repeated loading-state blink)
+- Registry status removed from left sidebar status row; kept only in service detail and moved as last section.
 - Updated service detail title from `System Service` to `Apple Container System Service`.
 - Sidebar behavior refined for service-off state:
   - `Images` section remains visible, but image rows are hidden.
@@ -34,4 +52,3 @@ Short, practical log of recent product/code decisions discussed in chat and impl
   - `Metadata extraction skipped. No AppIntents.framework dependency found.`
   - currently treated as non-blocking.
 - LaunchServices occasionally returns transient `open` errors (`-609` / `-600`) immediately after process kill; retrying open usually succeeds.
-

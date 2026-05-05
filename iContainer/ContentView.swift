@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct ContainerNavigationTarget: Hashable {
     let id: String
@@ -13,13 +14,25 @@ enum SidebarSelection: Hashable {
 struct ContentView: View {
     @EnvironmentObject var containerManager: ContainerizationWrapper
     @EnvironmentObject var serviceManager: ServiceManager
-    @State private var showingAddContainerAlert = false
-    @State private var newContainerName = ""
+    @State private var showingCreateContainerSheet = false
+    @State private var createImage = ""
+    @State private var createName = ""
+    @State private var createPorts = ""
+    @State private var createHostPort = ""
+    @State private var createContainerPort = ""
+    @State private var createVolumes = ""
+    @State private var createEnv = ""
+    @State private var isCreatingContainer = false
     @State private var isContainersExpanded = true
     @State private var isImagesExpanded = true
     @State private var showingPullImageAlert = false
     @State private var pullImageReference = ""
     @State private var isPullingImage = false
+    @State private var showingRegistryLoginSheet = false
+    @State private var registryHost = "registry-1.docker.io"
+    @State private var registryUsername = ""
+    @State private var registryPassword = ""
+    @State private var isLoggingInRegistry = false
     @State private var selection: SidebarSelection?
 
     var body: some View {
@@ -38,19 +51,11 @@ struct ContentView: View {
         } detail: {
             detailView
         }
-        .alert("New Container", isPresented: $showingAddContainerAlert) {
-            TextField("Container Name", text: $newContainerName)
-            Button("Create") {
-                if !newContainerName.isEmpty {
-                    Task {
-                        await containerManager.createContainer(name: newContainerName)
-                        newContainerName = ""
-                    }
-                }
-            }
-            Button("Cancel", role: .cancel) {
-                newContainerName = ""
-            }
+        .sheet(isPresented: $showingCreateContainerSheet) {
+            createContainerSheet
+        }
+        .sheet(isPresented: $showingRegistryLoginSheet) {
+            registryLoginSheet
         }
         .alert("Pull Image", isPresented: $showingPullImageAlert) {
             TextField("repository:tag", text: $pullImageReference)
@@ -81,6 +86,11 @@ struct ContentView: View {
             Section(header: Text("Container System Service")) {
                 NavigationLink(value: SidebarSelection.service) {
                     ServiceStatusView()
+                }
+                .contextMenu {
+                    Button("Registry Login") {
+                        showingRegistryLoginSheet = true
+                    }
                 }
             }
             Section {
@@ -132,11 +142,25 @@ struct ContentView: View {
         .navigationTitle("iContainer")
         .toolbar { addToolbar }
         .alert("Operation Failed", isPresented: errorAlertBinding) {
-            Button("OK", role: .cancel) {
-                containerManager.lastErrorMessage = nil
+            if isRegistryAuthError {
+                Button("Login now") {
+                    containerManager.lastErrorMessage = nil
+                    showingRegistryLoginSheet = true
+                }
+                Button("Copy command") {
+                    copyRegistryLoginCommand()
+                    containerManager.lastErrorMessage = nil
+                }
+                Button("Cancel", role: .cancel) {
+                    containerManager.lastErrorMessage = nil
+                }
+            } else {
+                Button("OK", role: .cancel) {
+                    containerManager.lastErrorMessage = nil
+                }
             }
         } message: {
-            Text(containerManager.lastErrorMessage ?? "Unknown error")
+            Text(errorAlertMessage)
         }
     }
 
@@ -169,12 +193,257 @@ struct ContentView: View {
         if serviceManager.isServiceRunning {
             ToolbarItem(placement: .primaryAction) {
                 Button {
-                    showingAddContainerAlert = true
+                    showingCreateContainerSheet = true
                 } label: {
                     Image(systemName: "plus")
                 }
             }
         }
+    }
+
+    private var createContainerSheet: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Create Container")
+                .font(.headline)
+
+            TextField("Image (required)", text: $createImage)
+                .textFieldStyle(.roundedBorder)
+            TextField("Name (optional)", text: $createName)
+                .textFieldStyle(.roundedBorder)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Published Ports")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                HStack(spacing: 8) {
+                    TextField("Local port (host) e.g. 8080", text: $createHostPort)
+                        .textFieldStyle(.roundedBorder)
+                    Text(":")
+                        .foregroundColor(.secondary)
+                    TextField("Container port e.g. 80", text: $createContainerPort)
+                        .textFieldStyle(.roundedBorder)
+                    Button("Add") {
+                        addPortMapping()
+                    }
+                    .disabled(createHostPort.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || createContainerPort.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+                TextField("Mappings list (host:container), e.g. 8080:80, 8443:443", text: $createPorts, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                if portMappings.isEmpty {
+                    Text("No port mappings added yet.")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                } else {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(portMappings, id: \.self) { mapping in
+                            HStack {
+                                Text(mapping)
+                                    .font(.caption.monospaced())
+                                Spacer()
+                                Button {
+                                    removePortMapping(mapping)
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .padding(.top, 2)
+                }
+                Text("Format: local(host):external(container)")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Volumes")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                TextField("e.g. /host/path:/container/path", text: $createVolumes, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Environment Variables")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                TextField("e.g. KEY=value", text: $createEnv, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            HStack {
+                Button("Create") {
+                    runCreateContainer()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(createImage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isCreatingContainer)
+
+                if isCreatingContainer {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                }
+
+                Spacer()
+
+                Button("Close") {
+                    showingCreateContainerSheet = false
+                }
+            }
+
+            Text("Use comma or newline to add multiple ports, volumes, or env entries.")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+        .padding()
+        .frame(minWidth: 620, minHeight: 420)
+    }
+
+    private var registryLoginSheet: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Registry Login")
+                .font(.headline)
+
+            TextField("Registry Host", text: $registryHost)
+                .textFieldStyle(.roundedBorder)
+            TextField("Username", text: $registryUsername)
+                .textFieldStyle(.roundedBorder)
+            SecureField("Password or token", text: $registryPassword)
+                .textFieldStyle(.roundedBorder)
+
+            HStack {
+                Button("Login") {
+                    runRegistryLogin()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(isLoggingInRegistry || registryHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || registryUsername.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || registryPassword.isEmpty)
+
+                if isLoggingInRegistry {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                }
+
+                Spacer()
+
+                Button("Close") {
+                    showingRegistryLoginSheet = false
+                }
+            }
+
+            Text("Per Docker Hub usa host `registry-1.docker.io` e un Personal Access Token.")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+        .padding()
+        .frame(minWidth: 500, minHeight: 260)
+    }
+
+    private func parseList(_ raw: String) -> [String] {
+        raw
+            .replacingOccurrences(of: "\n", with: ",")
+            .split(separator: ",")
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    private func runCreateContainer() {
+        let image = createImage.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !image.isEmpty, !isCreatingContainer else { return }
+
+        isCreatingContainer = true
+        let name = createName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let ports = parseList(createPorts)
+        let volumes = parseList(createVolumes)
+        let env = parseList(createEnv)
+
+        Task {
+            await containerManager.createContainer(
+                image: image,
+                name: name.isEmpty ? nil : name,
+                publishedPorts: ports,
+                volumes: volumes,
+                environment: env
+            )
+            isCreatingContainer = false
+
+            if containerManager.lastErrorMessage == nil {
+                createImage = ""
+                createName = ""
+                createPorts = ""
+                createHostPort = ""
+                createContainerPort = ""
+                createVolumes = ""
+                createEnv = ""
+                showingCreateContainerSheet = false
+            }
+        }
+    }
+
+    private var isRegistryAuthError: Bool {
+        guard let message = containerManager.lastErrorMessage else { return false }
+        return ContainerizationWrapper.isRegistryAuthError(message)
+    }
+
+    private var errorAlertMessage: String {
+        guard let message = containerManager.lastErrorMessage else {
+            return "Unknown error"
+        }
+        if isRegistryAuthError {
+            return "Registry authentication required.\n\(message)\n\nApri il login guidato per autenticarti e riprovare."
+        }
+        return message
+    }
+
+    private func runRegistryLogin() {
+        guard !isLoggingInRegistry else { return }
+        isLoggingInRegistry = true
+
+        let host = registryHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        let username = registryUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+        let password = registryPassword
+
+        Task {
+            let success = await containerManager.loginRegistry(host: host, username: username, password: password)
+            isLoggingInRegistry = false
+            if success {
+                registryPassword = ""
+                showingRegistryLoginSheet = false
+            }
+        }
+    }
+
+    private func copyRegistryLoginCommand() {
+        let host = registryHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        let username = registryUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedHost = host.isEmpty ? "registry-1.docker.io" : host
+        let resolvedUser = username.isEmpty ? "<username>" : username
+        let command = containerManager.registryLoginCommand(host: resolvedHost, username: resolvedUser)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(command, forType: .string)
+    }
+
+    private func addPortMapping() {
+        let host = createHostPort.trimmingCharacters(in: .whitespacesAndNewlines)
+        let container = createContainerPort.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !host.isEmpty, !container.isEmpty else { return }
+        let mapping = "\(host):\(container)"
+        if createPorts.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            createPorts = mapping
+        } else {
+            createPorts += ", \(mapping)"
+        }
+        createHostPort = ""
+        createContainerPort = ""
+    }
+
+    private var portMappings: [String] {
+        parseList(createPorts)
+    }
+
+    private func removePortMapping(_ mapping: String) {
+        let updated = portMappings.filter { $0 != mapping }
+        createPorts = updated.joined(separator: ", ")
     }
 }
 
