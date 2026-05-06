@@ -5,10 +5,25 @@ Short, practical log of recent product/code decisions discussed in chat and impl
 
 ## Timeline (latest first)
 
+### 2026-05-06
+- Added Finder picker for volume host paths:
+  - `Host Path` now has a browse button in create/edit volume forms
+  - the picker supports both files and folders
+- Improved create/edit container mapping layout:
+  - removed the redundant raw mapping text field from ports and volumes
+  - configured mappings now render as two 50/50 columns (`host` side and `container` side)
+  - long paths wrap inside their own column instead of truncating the full mapping
+  - create/edit sheets now have larger minimum sizing and are configured as resizable centered windows
+
 ### 2026-05-05
+- Updated container create/edit volume UX:
+  - volumes now use the same guided interaction as ports
+  - configured volumes are shown prominently above the add-volume form
+  - added `Host Path` and `Container Path` fields with automatic `host-path:container-path` composition
 - Refined container create/edit consistency:
   - create and edit now share the same ports editor UI
   - configured ports are shown above the add-port form and made more prominent
+  - port labels now use standard terms: `Host Port` and `Container Port`
   - container context menu action label shortened from `Edit Settings` to `Edit`
 - Fixed edit name prefill from inspect hostnames:
   - fully qualified hostnames such as `name.test.` are normalized back to `name`

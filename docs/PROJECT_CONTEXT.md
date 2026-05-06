@@ -34,6 +34,10 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
   - opens a guided edit sheet prefilled from inspect data
   - name and image use sidebar/list data as immediate fallback while inspect loads
   - fully qualified inspect hostnames such as `name.test.` are normalized to `name`
+  - ports and volumes use the same guided mapping editor pattern
+  - mapping editors show configured values in two wrapping columns and do not show a redundant raw mapping field
+  - volume `Host Path` fields include a Finder picker for files or folders
+  - create/edit sheets are resizable with a larger centered minimum window
   - save is disabled while edit settings are loading to avoid accidental loss of existing values
   - applying changes recreates the container with updated settings
 

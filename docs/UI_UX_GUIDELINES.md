@@ -53,13 +53,21 @@ Keep iContainer clear, predictable, and fast for container operations, with mini
 - Edit sheets must prefill existing values before allowing save, especially ports, volumes, env, image, and name.
 - The container context menu label for reconfiguration is `Edit`.
 - Create and edit forms must stay visually coherent and share the same ports interaction.
+- Create/edit sheets should be resizable on macOS, with a useful minimum size and centered initial presentation.
 
 ## Create Container Form
 - Ports input must clearly distinguish:
-  - local host port
-  - container/exposed port
+  - `Host Port`: port exposed on the Mac/host
+  - `Container Port`: port the service listens on inside the container
 - Prefer guided composition (`host:container`) over ambiguous free-text-only entry.
 - Existing/configured ports must be visually emphasized above the add-port controls.
+- Do not show a redundant raw mapping text field when the visual configured-list editor is available.
+- Long configured mappings should wrap in two equal columns instead of truncating the full string.
+- Volumes input must mirror the ports interaction:
+  - `Host Path`: path on the Mac/host
+  - `Container Path`: mount path inside the container
+- Existing/configured volumes must be visually emphasized above the add-volume controls.
+- `Host Path` should provide a Finder picker that supports both files and folders.
 
 ## Shell Experience
 - Shell output area should support selection/copy.

@@ -21,6 +21,8 @@ struct ContentView: View {
     @State private var createHostPort = ""
     @State private var createContainerPort = ""
     @State private var createVolumes = ""
+    @State private var createHostPath = ""
+    @State private var createContainerPath = ""
     @State private var createEnv = ""
     @State private var isCreatingContainer = false
     @State private var isContainersExpanded = true
@@ -41,6 +43,8 @@ struct ContentView: View {
     @State private var editHostPort = ""
     @State private var editContainerPort = ""
     @State private var editVolumes = ""
+    @State private var editHostPath = ""
+    @State private var editContainerPath = ""
     @State private var editEnv = ""
     @State private var isLoadingContainerEditSettings = false
     @State private var isSavingContainerEdit = false
@@ -219,129 +223,175 @@ struct ContentView: View {
     }
 
     private var createContainerSheet: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Create Container")
-                .font(.headline)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Create Container")
+                    .font(.headline)
 
-            TextField("Image (required)", text: $createImage)
-                .textFieldStyle(.roundedBorder)
-            TextField("Name (optional)", text: $createName)
-                .textFieldStyle(.roundedBorder)
+                TextField("Image (required)", text: $createImage)
+                    .textFieldStyle(.roundedBorder)
+                TextField("Name (optional)", text: $createName)
+                    .textFieldStyle(.roundedBorder)
 
-            PortMappingsEditor(
-                mappingsText: $createPorts,
-                hostPort: $createHostPort,
-                containerPort: $createContainerPort,
-                isLoading: false,
-                emptyText: "No port mappings added yet.",
+                MappingPairsEditor(
+                    title: "Published Ports",
+                    configuredTitle: "Configured Ports",
+                    mappingsText: $createPorts,
+                    firstValue: $createHostPort,
+                    secondValue: $createContainerPort,
+                    isLoading: false,
+                    emptyText: "No port mappings added yet.",
+                    firstTitle: "Host Port",
+                    secondTitle: "Container Port",
+                    firstPlaceholder: "Host Port e.g. 8080",
+                    secondPlaceholder: "Container Port e.g. 80",
+                formatText: "Format: host:container",
+                iconName: "network",
                 addAction: addPortMapping,
-                removeAction: removePortMapping
+                removeAction: removePortMapping,
+                browseFirstAction: nil
             )
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Volumes")
-                    .font(.caption)
+                MappingPairsEditor(
+                    title: "Volumes",
+                    configuredTitle: "Configured Volumes",
+                    mappingsText: $createVolumes,
+                    firstValue: $createHostPath,
+                    secondValue: $createContainerPath,
+                    isLoading: false,
+                    emptyText: "No volume mappings added yet.",
+                    firstTitle: "Host Path",
+                    secondTitle: "Container Path",
+                    firstPlaceholder: "Host Path e.g. /Users/me/data",
+                    secondPlaceholder: "Container Path e.g. /data",
+                formatText: "Format: host-path:container-path",
+                iconName: "externaldrive",
+                addAction: addVolumeMapping,
+                removeAction: removeVolumeMapping,
+                browseFirstAction: browseCreateHostPath
+            )
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Environment Variables")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    TextField("e.g. KEY=value", text: $createEnv, axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                HStack {
+                    Button("Create") {
+                        runCreateContainer()
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(createImage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isCreatingContainer)
+
+                    if isCreatingContainer {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                    }
+
+                    Spacer()
+
+                    Button("Close") {
+                        showingCreateContainerSheet = false
+                    }
+                }
+
+                Text("Use comma or newline to add multiple ports, volumes, or env entries.")
+                    .font(.caption2)
                     .foregroundColor(.secondary)
-                TextField("e.g. /host/path:/container/path", text: $createVolumes, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
             }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Environment Variables")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                TextField("e.g. KEY=value", text: $createEnv, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            HStack {
-                Button("Create") {
-                    runCreateContainer()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(createImage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isCreatingContainer)
-
-                if isCreatingContainer {
-                    ProgressView()
-                        .scaleEffect(0.8)
-                }
-
-                Spacer()
-
-                Button("Close") {
-                    showingCreateContainerSheet = false
-                }
-            }
-
-            Text("Use comma or newline to add multiple ports, volumes, or env entries.")
-                .font(.caption2)
-                .foregroundColor(.secondary)
+            .padding()
         }
-        .padding()
-        .frame(minWidth: 620, minHeight: 420)
+        .frame(minWidth: 720, idealWidth: 920, maxWidth: .infinity, minHeight: 560, idealHeight: 720, maxHeight: .infinity)
+        .background(WindowResizeConfigurator(minSize: CGSize(width: 720, height: 560), shouldCenter: showingCreateContainerSheet))
     }
 
     private var editContainerSheet: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Edit Container Settings")
-                .font(.headline)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Edit Container Settings")
+                    .font(.headline)
 
-            TextField("Image (required)", text: $editImage)
-                .textFieldStyle(.roundedBorder)
-            TextField("Name (optional)", text: $editName)
-                .textFieldStyle(.roundedBorder)
+                TextField("Image (required)", text: $editImage)
+                    .textFieldStyle(.roundedBorder)
+                TextField("Name (optional)", text: $editName)
+                    .textFieldStyle(.roundedBorder)
 
-            PortMappingsEditor(
-                mappingsText: $editPorts,
-                hostPort: $editHostPort,
-                containerPort: $editContainerPort,
-                isLoading: isLoadingContainerEditSettings,
-                emptyText: "No port mappings configured.",
+                MappingPairsEditor(
+                    title: "Published Ports",
+                    configuredTitle: "Configured Ports",
+                    mappingsText: $editPorts,
+                    firstValue: $editHostPort,
+                    secondValue: $editContainerPort,
+                    isLoading: isLoadingContainerEditSettings,
+                    emptyText: "No port mappings configured.",
+                    firstTitle: "Host Port",
+                    secondTitle: "Container Port",
+                    firstPlaceholder: "Host Port e.g. 8080",
+                    secondPlaceholder: "Container Port e.g. 80",
+                formatText: "Format: host:container",
+                iconName: "network",
                 addAction: addEditPortMapping,
-                removeAction: removeEditPortMapping
+                removeAction: removeEditPortMapping,
+                browseFirstAction: nil
             )
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Volumes")
-                    .font(.caption)
+                MappingPairsEditor(
+                    title: "Volumes",
+                    configuredTitle: "Configured Volumes",
+                    mappingsText: $editVolumes,
+                    firstValue: $editHostPath,
+                    secondValue: $editContainerPath,
+                    isLoading: isLoadingContainerEditSettings,
+                    emptyText: "No volume mappings configured.",
+                    firstTitle: "Host Path",
+                    secondTitle: "Container Path",
+                    firstPlaceholder: "Host Path e.g. /Users/me/data",
+                    secondPlaceholder: "Container Path e.g. /data",
+                formatText: "Format: host-path:container-path",
+                iconName: "externaldrive",
+                addAction: addEditVolumeMapping,
+                removeAction: removeEditVolumeMapping,
+                browseFirstAction: browseEditHostPath
+            )
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Environment Variables")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    TextField("e.g. KEY=value", text: $editEnv, axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                HStack {
+                    Button("Save") {
+                        runSaveContainerEdit()
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(isLoadingContainerEditSettings || isSavingContainerEdit || editImage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                    if isLoadingContainerEditSettings || isSavingContainerEdit {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                    }
+
+                    Spacer()
+
+                    Button("Close") {
+                        showingEditContainerSheet = false
+                    }
+                }
+
+                Text("Applying settings recreates the container with the new configuration.")
+                    .font(.caption2)
                     .foregroundColor(.secondary)
-                TextField("e.g. /host/path:/container/path", text: $editVolumes, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
             }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Environment Variables")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                TextField("e.g. KEY=value", text: $editEnv, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            HStack {
-                Button("Save") {
-                    runSaveContainerEdit()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(isLoadingContainerEditSettings || isSavingContainerEdit || editImage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                if isLoadingContainerEditSettings || isSavingContainerEdit {
-                    ProgressView()
-                        .scaleEffect(0.8)
-                }
-
-                Spacer()
-
-                Button("Close") {
-                    showingEditContainerSheet = false
-                }
-            }
-
-            Text("Applying settings recreates the container with the new configuration.")
-                .font(.caption2)
-                .foregroundColor(.secondary)
+            .padding()
         }
-        .padding()
-        .frame(minWidth: 620, minHeight: 420)
+        .frame(minWidth: 720, idealWidth: 920, maxWidth: .infinity, minHeight: 560, idealHeight: 720, maxHeight: .infinity)
+        .background(WindowResizeConfigurator(minSize: CGSize(width: 720, height: 560), shouldCenter: showingEditContainerSheet))
     }
 
     private var registryLoginSheet: some View {
@@ -418,6 +468,8 @@ struct ContentView: View {
                 createHostPort = ""
                 createContainerPort = ""
                 createVolumes = ""
+                createHostPath = ""
+                createContainerPath = ""
                 createEnv = ""
                 showingCreateContainerSheet = false
             }
@@ -433,6 +485,8 @@ struct ContentView: View {
         editHostPort = ""
         editContainerPort = ""
         editVolumes = ""
+        editHostPath = ""
+        editContainerPath = ""
         editEnv = ""
         isLoadingContainerEditSettings = true
         showingEditContainerSheet = true
@@ -547,12 +601,71 @@ struct ContentView: View {
         editContainerPort = ""
     }
 
+    private func addVolumeMapping() {
+        let host = createHostPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let container = createContainerPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !host.isEmpty, !container.isEmpty else { return }
+        let mapping = "\(host):\(container)"
+        if createVolumes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            createVolumes = mapping
+        } else {
+            createVolumes += ", \(mapping)"
+        }
+        createHostPath = ""
+        createContainerPath = ""
+    }
+
+    private func addEditVolumeMapping() {
+        let host = editHostPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let container = editContainerPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !host.isEmpty, !container.isEmpty else { return }
+        let mapping = "\(host):\(container)"
+        if editVolumes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            editVolumes = mapping
+        } else {
+            editVolumes += ", \(mapping)"
+        }
+        editHostPath = ""
+        editContainerPath = ""
+    }
+
+    private func browseCreateHostPath() {
+        if let path = chooseHostPath() {
+            createHostPath = path
+        }
+    }
+
+    private func browseEditHostPath() {
+        if let path = chooseHostPath() {
+            editHostPath = path
+        }
+    }
+
+    private func chooseHostPath() -> String? {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Choose"
+        panel.message = "Choose a file or folder to mount from the host."
+        return panel.runModal() == .OK ? panel.url?.path : nil
+    }
+
     private var portMappings: [String] {
         parseList(createPorts)
     }
 
     private var editPortMappings: [String] {
         parseList(editPorts)
+    }
+
+    private var volumeMappings: [String] {
+        parseList(createVolumes)
+    }
+
+    private var editVolumeMappings: [String] {
+        parseList(editVolumes)
     }
 
     private func removePortMapping(_ mapping: String) {
@@ -563,6 +676,16 @@ struct ContentView: View {
     private func removeEditPortMapping(_ mapping: String) {
         let updated = editPortMappings.filter { $0 != mapping }
         editPorts = updated.joined(separator: ", ")
+    }
+
+    private func removeVolumeMapping(_ mapping: String) {
+        let updated = volumeMappings.filter { $0 != mapping }
+        createVolumes = updated.joined(separator: ", ")
+    }
+
+    private func removeEditVolumeMapping(_ mapping: String) {
+        let updated = editVolumeMappings.filter { $0 != mapping }
+        editVolumes = updated.joined(separator: ", ")
     }
 }
 
@@ -620,14 +743,23 @@ struct ServiceStatusView: View {
     }
 }
 
-private struct PortMappingsEditor: View {
+private struct MappingPairsEditor: View {
+    let title: String
+    let configuredTitle: String
     @Binding var mappingsText: String
-    @Binding var hostPort: String
-    @Binding var containerPort: String
+    @Binding var firstValue: String
+    @Binding var secondValue: String
     let isLoading: Bool
     let emptyText: String
+    let firstTitle: String
+    let secondTitle: String
+    let firstPlaceholder: String
+    let secondPlaceholder: String
+    let formatText: String
+    let iconName: String
     let addAction: () -> Void
     let removeAction: (String) -> Void
+    let browseFirstAction: (() -> Void)?
 
     private var mappings: [String] {
         mappingsText
@@ -639,13 +771,13 @@ private struct PortMappingsEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Published Ports")
+            Text(title)
                 .font(.caption)
                 .foregroundColor(.secondary)
 
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text("Configured Ports")
+                    Text(configuredTitle)
                         .font(.caption)
                         .fontWeight(.semibold)
                     Spacer()
@@ -664,11 +796,18 @@ private struct PortMappingsEditor: View {
                         .padding(.vertical, 6)
                 } else {
                     ForEach(mappings, id: \.self) { mapping in
-                        HStack(spacing: 8) {
-                            Image(systemName: "network")
+                        let pair = splitMapping(mapping)
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: iconName)
                                 .foregroundColor(.secondary)
-                            Text(mapping)
-                                .font(.caption.monospaced())
+                                .padding(.top, 17)
+                            HStack(alignment: .top, spacing: 10) {
+                                MappingValueColumn(title: firstTitle, value: pair.first)
+                                Text(":")
+                                    .foregroundColor(.secondary)
+                                    .padding(.top, 17)
+                                MappingValueColumn(title: secondTitle, value: pair.second)
+                            }
                             Spacer()
                             Button {
                                 removeAction(mapping)
@@ -685,26 +824,100 @@ private struct PortMappingsEditor: View {
             .padding(10)
             .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
 
-            HStack(spacing: 8) {
-                TextField("Local port (host) e.g. 8080", text: $hostPort)
+            HStack(alignment: .top, spacing: 10) {
+                TextField(firstPlaceholder, text: $firstValue, axis: .vertical)
                     .textFieldStyle(.roundedBorder)
+                    .lineLimit(1...3)
+                    .frame(maxWidth: .infinity)
+                if let browseFirstAction {
+                    Button {
+                        browseFirstAction()
+                    } label: {
+                        Image(systemName: "folder")
+                    }
+                    .help("Choose file or folder")
+                    .padding(.top, 1)
+                }
                 Text(":")
                     .foregroundColor(.secondary)
-                TextField("Container port e.g. 80", text: $containerPort)
+                    .padding(.top, 7)
+                TextField(secondPlaceholder, text: $secondValue, axis: .vertical)
                     .textFieldStyle(.roundedBorder)
+                    .lineLimit(1...3)
+                    .frame(maxWidth: .infinity)
                 Button("Add") {
                     addAction()
                 }
-                .disabled(hostPort.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || containerPort.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .padding(.top, 1)
+                .disabled(firstValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || secondValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
 
-            TextField("Mappings list (host:container), e.g. 8080:80, 8443:443", text: $mappingsText, axis: .vertical)
-                .textFieldStyle(.roundedBorder)
-
-            Text("Format: local(host):external(container)")
+            Text(formatText)
                 .font(.caption2)
                 .foregroundColor(.secondary)
         }
+    }
+
+    private func splitMapping(_ mapping: String) -> (first: String, second: String) {
+        let parts = mapping.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+        guard parts.count == 2 else {
+            return (mapping, "")
+        }
+        return (String(parts[0]), String(parts[1]))
+    }
+}
+
+private struct MappingValueColumn: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            Text(value.isEmpty ? "-" : value)
+                .font(.caption.monospaced())
+                .textSelection(.enabled)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct WindowResizeConfigurator: NSViewRepresentable {
+    let minSize: CGSize
+    let shouldCenter: Bool
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        configure(from: view, context: context)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        configure(from: nsView, context: context)
+    }
+
+    private func configure(from view: NSView, context: Context) {
+        DispatchQueue.main.async {
+            guard let window = view.window else { return }
+            window.styleMask.insert(.resizable)
+            window.minSize = minSize
+            if shouldCenter && !context.coordinator.didCenter {
+                window.center()
+                context.coordinator.didCenter = true
+            }
+        }
+    }
+
+    final class Coordinator {
+        var didCenter = false
     }
 }
 
