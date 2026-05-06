@@ -61,6 +61,7 @@ Keep iContainer clear, predictable, and fast for container operations, with mini
   - `Container Port`: port the service listens on inside the container
 - Prefer guided composition (`host:container`) over ambiguous free-text-only entry.
 - Existing/configured ports must be visually emphasized above the add-port controls.
+- Browser actions for exposed ports belong in the container `Info` tab, not in create/edit forms.
 - Do not show a redundant raw mapping text field when the visual configured-list editor is available.
 - Long configured mappings should wrap in two equal columns instead of truncating the full string.
 - Volumes input must mirror the ports interaction:
@@ -89,6 +90,13 @@ Keep iContainer clear, predictable, and fast for container operations, with mini
   - `Login now`
   - `Copy command`
   - `Cancel`
+
+## Container Info
+- Info cards should use consistent text hierarchy across Basic Information, Network, Mounts, DNS, and Environment Variables.
+- Technical values in Info cards should share the same compact monospaced style.
+- Exposed ports should use the same technical-value style and an icon-only browser button with clear spacing.
+- Mount rows should show `Host Path` above `Container Path` with a clear divider for long-path readability.
+- Host mount paths should offer a compact Finder action with file/folder-specific icon.
 
 ## Visual Consistency
 - Reuse existing component language (`DetailSection`, `DetailRow`, status badge style).

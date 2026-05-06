@@ -1,6 +1,7 @@
 import SwiftUI
 import Charts
 import Combine
+import AppKit
 
 struct ContainerDetailView: View {
     let containerId: String
@@ -196,7 +197,11 @@ private struct ContainerInfoView: View {
                                 DetailRow(label: "IPv6", value: fallback?.ipv6Address ?? "-")
                                 DetailRow(label: "MAC", value: fallback?.macAddress ?? "-")
                                 let ports = !details.portBindings.isEmpty ? details.portBindings : (fallback?.ports ?? [])
-                                DetailRow(label: "Ports", value: ports.isEmpty ? "None" : ports.joined(separator: ", "))
+                                if ports.isEmpty {
+                                    DetailRow(label: "Ports", value: "None")
+                                } else {
+                                    PortLinksView(ports: ports)
+                                }
                                 if let hostname = fallback?.hostname {
                                     DetailRow(label: "Hostname", value: hostname)
                                 }
@@ -224,13 +229,17 @@ private struct ContainerInfoView: View {
                             DetailSection(title: "Mounts", icon: "externaldrive") {
                                 let mounts = details.configuration?.mounts
                                 if let mounts, !mounts.isEmpty {
-                                    ForEach(mounts, id: \.self) { mount in
-                                        DetailRow(label: mount.source ?? "-", value: mount.destination ?? "-")
-                                    }
+                                    MountLinksView(
+                                        mounts: mounts.map {
+                                            MountDisplay(source: $0.source ?? "-", destination: $0.destination ?? "-")
+                                        }
+                                    )
                                 } else if let fallbackMounts = fallback?.mounts, !fallbackMounts.isEmpty {
-                                    ForEach(fallbackMounts, id: \.self) { mount in
-                                        DetailRow(label: mount.source, value: mount.destination)
-                                    }
+                                    MountLinksView(
+                                        mounts: fallbackMounts.map {
+                                            MountDisplay(source: $0.source, destination: $0.destination)
+                                        }
+                                    )
                                 } else {
                                     Text("No volumes mounted.")
                                         .foregroundColor(.secondary)
@@ -247,8 +256,8 @@ private struct ContainerInfoView: View {
                                             DetailRow(label: String(parts[0]), value: String(parts[1]), isMonospaced: true)
                                         } else {
                                             Text(envVar)
-                                                .font(.caption)
-                                                .monospaced()
+                                                .font(InfoTextStyle.monospacedValueFont)
+                                                .textSelection(.enabled)
                                         }
                                     }
                                 } else {
@@ -280,6 +289,134 @@ private struct ContainerInfoView: View {
                 .padding(.top, 50)
             }
         }
+    }
+}
+
+private struct PortLinksView: View {
+    let ports: [String]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Ports")
+                .font(InfoTextStyle.labelFont)
+                .foregroundColor(.secondary)
+                .fontWeight(.medium)
+            ForEach(ports, id: \.self) { port in
+                HStack(spacing: 14) {
+                    Text(port)
+                        .font(InfoTextStyle.monospacedValueFont)
+                        .textSelection(.enabled)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .layoutPriority(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if let hostPort = hostPort(from: port),
+                       let url = URL(string: "http://localhost:\(hostPort)") {
+                        Button {
+                            NSWorkspace.shared.open(url)
+                        } label: {
+                            Label("Open", systemImage: "safari")
+                                .labelStyle(.iconOnly)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .help("Open http://localhost:\(hostPort)")
+                    }
+                }
+            }
+        }
+    }
+
+    private func hostPort(from mapping: String) -> String? {
+        let patterns = [
+            #"^\s*(?:\d{1,3}(?:\.\d{1,3}){3}:)?(\d+)\s*(?:->|:)"#,
+            #"hostPort[^\d]*(\d+)"#
+        ]
+        for pattern in patterns {
+            if let match = firstRegexGroup(in: mapping, pattern: pattern) {
+                return match
+            }
+        }
+        return nil
+    }
+
+    private func firstRegexGroup(in value: String, pattern: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return nil
+        }
+        let range = NSRange(value.startIndex..<value.endIndex, in: value)
+        guard let match = regex.firstMatch(in: value, options: [], range: range),
+              match.numberOfRanges > 1,
+              let groupRange = Range(match.range(at: 1), in: value) else {
+            return nil
+        }
+        return String(value[groupRange])
+    }
+}
+
+private struct MountDisplay: Hashable {
+    let source: String
+    let destination: String
+}
+
+private struct MountLinksView: View {
+    let mounts: [MountDisplay]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(mounts, id: \.self) { mount in
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .top, spacing: 8) {
+                        MountPathColumn(title: "Host Path", value: mount.source)
+                        Button {
+                            openHostPath(mount.source)
+                        } label: {
+                            Image(systemName: hostPathIsDirectory(mount.source) ? "folder" : "doc")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(mount.source == "-")
+                        .help(hostPathIsDirectory(mount.source) ? "Open folder" : "Open file")
+                    }
+
+                    Divider()
+                        .opacity(0.6)
+
+                    MountPathColumn(title: "Container Path", value: mount.destination)
+                }
+                .padding(.vertical, 8)
+            }
+        }
+    }
+
+    private func openHostPath(_ path: String) {
+        guard path != "-" else { return }
+        NSWorkspace.shared.open(URL(fileURLWithPath: path))
+    }
+
+    private func hostPathIsDirectory(_ path: String) -> Bool {
+        var isDirectory: ObjCBool = false
+        return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
+    }
+}
+
+private struct MountPathColumn: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(InfoTextStyle.labelFont)
+                .foregroundColor(.secondary)
+                .fontWeight(.medium)
+            Text(value)
+                .font(InfoTextStyle.monospacedValueFont)
+                .textSelection(.enabled)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -760,8 +897,10 @@ private struct ContainerStatsView: View {
                                         DetailRow(label: "Block I/O", value: stats.blockIo)
                                         DetailRow(label: "Pids", value: stats.pids)
                                     }
-                                    .padding()
-                                    .frame(width: sectionContentWidth * 0.33, height: infoBoxHeight, alignment: .leading)
+                                    .padding(.horizontal, 20)
+                                    .padding(.vertical, 18)
+                                    .frame(width: sectionContentWidth * 0.33, alignment: .topLeading)
+                                    .frame(minHeight: infoBoxHeight, alignment: .topLeading)
                                     .background(Color(nsColor: .controlBackgroundColor))
                                     .cornerRadius(10)
                                     .overlay(
@@ -1469,6 +1608,12 @@ private func stringArrayIn(_ dict: [String: Any], keys: [String]) -> [String] {
 
 // MARK: - UI Components
 
+private enum InfoTextStyle {
+    static let labelFont = Font.caption
+    static let valueFont = Font.body
+    static let monospacedValueFont = Font.caption.monospaced()
+}
+
 struct DetailSection<Content: View>: View {
     let title: String
     let icon: String
@@ -1514,11 +1659,11 @@ struct DetailRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
-                .font(.caption)
+                .font(InfoTextStyle.labelFont)
                 .foregroundColor(.secondary)
                 .fontWeight(.medium)
             Text(value)
-                .font(isMonospaced ? .caption.monospaced() : .body)
+                .font(isMonospaced ? InfoTextStyle.monospacedValueFont : InfoTextStyle.valueFont)
                 .textSelection(.enabled)
         }
         .padding(.vertical, 2)

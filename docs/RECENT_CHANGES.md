@@ -6,6 +6,19 @@ Short, practical log of recent product/code decisions discussed in chat and impl
 ## Timeline (latest first)
 
 ### 2026-05-06
+- Improved Stats tab spacing:
+  - resource summary box now has explicit vertical padding and top-leading content alignment
+  - resource summary box no longer clips content when padding increases
+- Added browser shortcuts for exposed ports:
+  - container detail Network section now renders ports with browser links to `http://localhost:<hostPort>`
+  - link extraction supports common inspect formats such as `8429:8429` and `0.0.0.0:8429->8429/tcp`
+  - port rows now use body-sized monospaced text with extra spacing before the icon-only browser button
+- Improved container detail Mounts section:
+  - host and container paths now render vertically with a divider for better long-path readability
+  - host paths include a compact Finder button with file/folder-specific icon
+- Normalized Info tab typography:
+  - Basic Information, Network, Mounts, DNS, and Environment Variables now share consistent label/value sizing
+  - technical values use the same compact monospaced style across cards
 - Added Finder picker for volume host paths:
   - `Host Path` now has a browse button in create/edit volume forms
   - the picker supports both files and folders
