@@ -80,6 +80,9 @@ Keep iContainer clear, predictable, and fast for container operations, with mini
 - Keep quick controls visible: filter, refresh, clear, copy.
 - Auto-refresh and auto-scroll toggles should be explicit and independent.
 - Empty state should be informative, not alarming.
+- Service logs belong in a dedicated `Logs` tab inside the Apple Container System Service detail page, separate from per-container logs.
+- Service logs should provide refresh, follow, clear, and copy actions.
+- Live service log follow should terminate its child process when disabled or when the app closes.
 
 ## Labels and Copy
 - Prefer explicit names over short generic labels.

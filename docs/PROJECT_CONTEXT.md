@@ -51,6 +51,13 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
 - Service detail header title is:
   - `Apple Container System Service`
 
+## Service Logs
+- Apple Container System Service detail uses tabs: `Info` and `Logs`.
+- Service logs come from the official `container system logs --last 15m` command and are capped before display.
+- Service logs can be followed live with `container system logs --last 15m -f`; disabling follow terminates the child process.
+- The Logs tab supports refresh, follow, clear, and copy actions.
+- Service logs are global service/runtime diagnostics and are separate from per-container stdout/stderr logs.
+
 ## Build/Run Workflow
 - Standard build command:
   - `xcodebuild -project iContainer.xcodeproj -scheme iContainer -configuration Debug build`

@@ -5,6 +5,13 @@ Short, practical log of recent product/code decisions discussed in chat and impl
 
 ## Timeline (latest first)
 
+### 2026-05-16
+- Added Apple Container System Service logs:
+  - service detail page now has `Info` and `Logs` tabs
+  - logs are loaded through the official `container system logs --last 15m` command
+  - Logs tab includes manual refresh, clear, copy, and live follow actions
+  - live follow uses `container system logs --last 15m -f` and stops the process when disabled
+
 ### 2026-05-06
 - Improved Stats tab spacing:
   - resource summary box now has explicit vertical padding and top-leading content alignment

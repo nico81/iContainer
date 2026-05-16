@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 
 struct ContainerNavigationTarget: Hashable {
     let id: String
@@ -14,6 +15,7 @@ enum SidebarSelection: Hashable {
 struct ContentView: View {
     @EnvironmentObject var containerManager: ContainerizationWrapper
     @EnvironmentObject var serviceManager: ServiceManager
+    @EnvironmentObject var appNavigation: AppNavigation
     @State private var showingCreateContainerSheet = false
     @State private var createImage = ""
     @State private var createName = ""
@@ -96,6 +98,16 @@ struct ContentView: View {
         }
         .task {
             await containerManager.refreshImages()
+        }
+        .onReceive(appNavigation.$containerTarget.compactMap { $0 }) { target in
+            selection = .container(target)
+        }
+        .onReceive(appNavigation.$editContainerId.compactMap { $0 }) { containerId in
+            openEditContainerSheet(containerId: containerId)
+            appNavigation.editContainerId = nil
+        }
+        .onReceive(appNavigation.$serviceRequestID.dropFirst()) { _ in
+            selection = .service
         }
     }
 
@@ -998,79 +1010,17 @@ struct ContainerRowView: View {
         }
         .padding(.vertical, 4)
         .contextMenu {
-            if container.status == .running {
-                Button {
+            ContainerActionsMenuItems(
+                container: container,
+                onNavigateToTab: onNavigateToTab,
+                onEditSettings: onEditSettings,
+                onRequestStop: {
                     showingStopConfirmation = true
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "stop.fill")
-                            .foregroundColor(.red)
-                        Text("Stop")
-                    }
+                },
+                onDelete: {
+                    showingDeleteConfirmation = true
                 }
-                Button {
-                    Task {
-                        await containerManager.stopContainer(containerId: container.id)
-                        await containerManager.startContainer(containerId: container.id)
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "arrow.clockwise")
-                            .foregroundColor(.blue)
-                        Text("Restart")
-                    }
-                }
-            } else {
-                Button {
-                    Task {
-                        await containerManager.startContainer(containerId: container.id)
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "play.fill")
-                            .foregroundColor(.green)
-                        Text("Start")
-                    }
-                }
-            }
-            Divider()
-            Button {
-                onNavigateToTab(0)
-            } label: {
-                Label("Info", systemImage: "info.circle")
-            }
-            Button {
-                onNavigateToTab(1)
-            } label: {
-                Label("Stats", systemImage: "chart.xyaxis.line")
-            }
-            Button {
-                onNavigateToTab(2)
-            } label: {
-                Label("Shell", systemImage: "terminal")
-            }
-            Button {
-                onNavigateToTab(3)
-            } label: {
-                Label("Logs", systemImage: "doc.plaintext")
-            }
-            Divider()
-            Button {
-                onEditSettings()
-            } label: {
-                Label("Edit", systemImage: "slider.horizontal.3")
-            }
-            Divider()
-            Button(role: .destructive) {
-                showingDeleteConfirmation = true
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "trash")
-                        .foregroundColor(.red)
-                    Text("Delete")
-                }
-            }
-            .tint(.red)
+            )
         }
         .confirmationDialog("Delete Container?", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {

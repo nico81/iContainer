@@ -10,9 +10,15 @@ class ServiceManager: ObservableObject {
     @Published var serviceStatus: String = "Unknown"
     @Published var lastStatusOutput: String = ""
     @Published var lastCheckedAt: Date?
+    @Published var serviceLogs: String = ""
+    @Published var serviceLogsCheckedAt: Date?
+    @Published var isLoadingServiceLogs: Bool = false
+    @Published var isFollowingServiceLogs: Bool = false
     private var timer: Timer?
     private let logger = Logger(label: "ServiceManager")
     private var isCheckingStatus = false
+    private var serviceLogsFollowProcess: Process?
+    private var serviceLogsFollowPipe: Pipe?
 
     init() {
         startPolling()
@@ -216,12 +222,131 @@ class ServiceManager: ObservableObject {
         }
     }
 
+    func refreshServiceLogs() async {
+        guard !isLoadingServiceLogs, !isFollowingServiceLogs else { return }
+        isLoadingServiceLogs = true
+        defer { isLoadingServiceLogs = false }
+
+        do {
+            let result = try await Task.detached(priority: .utility) {
+                try Self.runCommandBlocking(["system", "logs", "--last", "15m"])
+            }.value
+            let output = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+            let limitedOutput = Self.limitedLogOutput(output)
+            if limitedOutput.isEmpty {
+                serviceLogs = "No Apple Container service logs found in the last 15 minutes."
+            } else if result.status == 0 {
+                serviceLogs = limitedOutput
+            } else {
+                serviceLogs = "container system logs exited with status \(result.status):\n\n\(limitedOutput)"
+            }
+            serviceLogsCheckedAt = Date()
+        } catch {
+            logger.error("Failed to fetch service logs: \(error)")
+            serviceLogs = error.localizedDescription
+            serviceLogsCheckedAt = Date()
+        }
+    }
+
+    func clearServiceLogs() {
+        serviceLogs = ""
+        serviceLogsCheckedAt = nil
+    }
+
+    func startFollowingServiceLogs() {
+        guard !isFollowingServiceLogs else { return }
+        guard let cliPath = Self.resolveCLIPath() else {
+            serviceLogs = "CLI 'container' non trovata"
+            serviceLogsCheckedAt = Date()
+            return
+        }
+
+        stopFollowingServiceLogs()
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: cliPath)
+        process.arguments = ["system", "logs", "--last", "15m", "-f"]
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            let data = handle.availableData
+            guard !data.isEmpty, let chunk = String(data: data, encoding: .utf8) else {
+                return
+            }
+            Task { @MainActor [weak self] in
+                self?.appendServiceLogChunk(chunk)
+            }
+        }
+
+        process.terminationHandler = { [weak self] process in
+            Task { @MainActor [weak self] in
+                guard let self, self.serviceLogsFollowProcess === process else { return }
+                self.finishFollowingServiceLogs(status: process.terminationStatus)
+            }
+        }
+
+        do {
+            try process.run()
+            serviceLogsFollowProcess = process
+            serviceLogsFollowPipe = pipe
+            isFollowingServiceLogs = true
+            serviceLogsCheckedAt = Date()
+        } catch {
+            pipe.fileHandleForReading.readabilityHandler = nil
+            serviceLogs = "Failed to follow Apple Container service logs: \(error.localizedDescription)"
+            serviceLogsCheckedAt = Date()
+        }
+    }
+
+    func stopFollowingServiceLogs() {
+        guard let process = serviceLogsFollowProcess else {
+            isFollowingServiceLogs = false
+            return
+        }
+
+        serviceLogsFollowPipe?.fileHandleForReading.readabilityHandler = nil
+        serviceLogsFollowPipe = nil
+        serviceLogsFollowProcess = nil
+        isFollowingServiceLogs = false
+
+        if process.isRunning {
+            process.terminate()
+        }
+    }
+
     deinit {
         timer?.invalidate()
+        serviceLogsFollowPipe?.fileHandleForReading.readabilityHandler = nil
+        serviceLogsFollowProcess?.terminate()
     }
 }
 
 private extension ServiceManager {
+    func appendServiceLogChunk(_ chunk: String) {
+        let trimmed = chunk.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        if serviceLogs.isEmpty {
+            serviceLogs = trimmed
+        } else {
+            serviceLogs += "\n" + trimmed
+        }
+        serviceLogs = Self.limitedLogOutput(serviceLogs, maxLines: 1_000)
+        serviceLogsCheckedAt = Date()
+    }
+
+    func finishFollowingServiceLogs(status: Int32) {
+        serviceLogsFollowPipe?.fileHandleForReading.readabilityHandler = nil
+        serviceLogsFollowPipe = nil
+        serviceLogsFollowProcess = nil
+        isFollowingServiceLogs = false
+        serviceLogsCheckedAt = Date()
+        if status != 0 {
+            appendServiceLogChunk("container system logs -f exited with status \(status)")
+        }
+    }
+
     nonisolated static func runCommandBlocking(_ arguments: [String]) throws -> (output: String, status: Int32) {
         guard let cliPath = resolveCLIPath() else {
             throw NSError(domain: "ServiceManager", code: 1, userInfo: [NSLocalizedDescriptionKey: "CLI 'container' non trovata"])
@@ -256,6 +381,15 @@ private extension ServiceManager {
             }
         }
         return nil
+    }
+
+    nonisolated static func limitedLogOutput(_ output: String, maxLines: Int = 500) -> String {
+        let lines = output.split(separator: "\n", omittingEmptySubsequences: false)
+        guard lines.count > maxLines else {
+            return output
+        }
+        let visibleLines = lines.suffix(maxLines).joined(separator: "\n")
+        return "Showing the latest \(maxLines) of \(lines.count) log lines.\n\n\(visibleLines)"
     }
 }
 
