@@ -244,27 +244,31 @@ struct ContentView: View {
             ContainerDetailView(containerId: target.id, initialTab: target.tab)
                 .id(target)
         default:
-            WelcomeDashboardView(
-                containers: containerManager.containers,
-                imageCount: containerManager.images.count,
-                isServiceRunning: serviceManager.isServiceRunning,
-                onCreateContainer: {
-                    createErrorMessage = nil
-                    containerManager.lastErrorMessage = nil
-                    containerManager.lastBuildOutput = nil
-                    showingCreateContainerSheet = true
-                },
-                onPullImage: {
-                    showingPullImageAlert = true
-                },
-                onShowService: {
-                    selection = .service
-                },
-                onSelectContainer: { container in
-                    selection = .container(ContainerNavigationTarget(id: container.id, tab: 0))
-                }
-            )
+            welcomeDashboard
         }
+    }
+
+    private var welcomeDashboard: some View {
+        WelcomeDashboardView(
+            containers: containerManager.containers,
+            imageCount: containerManager.images.count,
+            isServiceRunning: serviceManager.isServiceRunning,
+            onCreateContainer: {
+                createErrorMessage = nil
+                containerManager.lastErrorMessage = nil
+                containerManager.lastBuildOutput = nil
+                showingCreateContainerSheet = true
+            },
+            onPullImage: {
+                showingPullImageAlert = true
+            },
+            onShowService: {
+                selection = .service
+            },
+            onSelectContainer: { container in
+                selection = .container(ContainerNavigationTarget(id: container.id, tab: 0))
+            }
+        )
     }
 
     private var errorAlertBinding: Binding<Bool> {
@@ -280,8 +284,8 @@ struct ContentView: View {
 
     @ToolbarContentBuilder
     private var addToolbar: some ToolbarContent {
-        if serviceManager.isServiceRunning {
-            ToolbarItem(placement: .primaryAction) {
+        ToolbarItemGroup(placement: .primaryAction) {
+            if serviceManager.isServiceRunning {
                 Button {
                     createErrorMessage = nil
                     containerManager.lastErrorMessage = nil
@@ -290,7 +294,15 @@ struct ContentView: View {
                 } label: {
                     Image(systemName: "plus")
                 }
+                .help("Create container")
             }
+
+            Button {
+                selection = nil
+            } label: {
+                Image(systemName: "house")
+            }
+            .help("Show overview")
         }
     }
 
