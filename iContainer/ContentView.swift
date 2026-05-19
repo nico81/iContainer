@@ -1127,6 +1127,10 @@ private struct WelcomeDashboardView: View {
                         .font(.callout)
                         .foregroundColor(.secondary)
                 }
+                Text(AppVersion.displayString)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .textSelection(.enabled)
             }
         }
     }
@@ -1156,11 +1160,13 @@ private struct WelcomeDashboardView: View {
             .controlSize(.large)
             .disabled(!isServiceRunning)
 
-            Button(action: onShowService) {
-                Label("Apple container service details", systemImage: "server.rack")
+            if isServiceRunning {
+                Button(action: onShowService) {
+                    Label("Apple container service details", systemImage: "server.rack")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
             }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
         }
     }
 

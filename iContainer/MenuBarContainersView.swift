@@ -13,6 +13,10 @@ struct MenuBarContainersView: View {
 
             Divider()
 
+            Text(AppVersion.displayString)
+
+            Divider()
+
             Button {
                 openMainWindow()
             } label: {
@@ -78,13 +82,13 @@ struct MenuBarContainersView: View {
             Image(nsImage: MenuBarImages.statusDot(isRunning: serviceManager.isServiceRunning))
         }
 
-        Button {
-            showServiceDetails()
-        } label: {
-            Label("Apple container service details", systemImage: "server.rack")
-        }
-
         if serviceManager.isServiceRunning {
+            Button {
+                showServiceDetails()
+            } label: {
+                Label("Apple container service details", systemImage: "server.rack")
+            }
+
             Button(role: .destructive) {
                 updateService(isStarting: false)
             } label: {
