@@ -13,6 +13,7 @@ struct iContainerApp: App {
     @StateObject private var containerManager = ContainerizationWrapper()
     @StateObject private var serviceManager = ServiceManager()
     @StateObject private var appNavigation = AppNavigation()
+    @StateObject private var releaseChecker = ContainerReleaseChecker()
 
     var body: some Scene {
         Window("iContainer", id: "main") {
@@ -20,6 +21,7 @@ struct iContainerApp: App {
                 .environmentObject(containerManager)
                 .environmentObject(serviceManager)
                 .environmentObject(appNavigation)
+                .environmentObject(releaseChecker)
                 .onAppear {
                     appQuitDelegate.serviceManager = serviceManager
                 }

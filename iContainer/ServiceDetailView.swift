@@ -4,6 +4,7 @@ import AppKit
 struct ServiceDetailView: View {
     @EnvironmentObject var serviceManager: ServiceManager
     @EnvironmentObject var containerManager: ContainerizationWrapper
+    @EnvironmentObject var releaseChecker: ContainerReleaseChecker
     @State private var selectedTab = 0
     @State private var isRemovingRegistryCredentials = false
     @State private var showingRemoveRegistryCredentialsConfirmation = false
@@ -37,6 +38,7 @@ struct ServiceDetailView: View {
         .navigationTitle("Apple container service")
         .task {
             await serviceManager.checkServiceStatus()
+            await releaseChecker.checkForUpdateIfNeeded()
         }
         .task(id: selectedTab) {
             if selectedTab == 1 && serviceManager.serviceLogs.isEmpty {
@@ -85,6 +87,22 @@ struct ServiceDetailView: View {
                     DetailSection(title: "Version Information", icon: "info.circle") {
                         DetailRow(label: "Version", value: details.version ?? "-")
                         DetailRow(label: "Commit", value: details.commit ?? "-", isMonospaced: true)
+                        DetailRow(label: "Latest release", value: latestReleaseText)
+                        if releaseChecker.isUpdateAvailable {
+                            HStack(spacing: 8) {
+                                Image(systemName: "arrow.down.circle.fill")
+                                    .foregroundColor(.accentColor)
+                                Text("A newer version is available.")
+                                    .font(.caption)
+                                Link(
+                                    "Download",
+                                    destination: releaseChecker.latestReleaseURL ?? ContainerReleaseChecker.releasesPageURL
+                                )
+                                .font(.caption)
+                                Spacer()
+                            }
+                            .padding(.top, 4)
+                        }
                     }
                     
                     // Paths
@@ -227,6 +245,13 @@ struct ServiceDetailView: View {
             )
         }
         .padding()
+    }
+
+    private var latestReleaseText: String {
+        if let latest = releaseChecker.latestVersion {
+            return "v\(latest)"
+        }
+        return releaseChecker.isChecking ? "Checking..." : "-"
     }
 
     private var lastCheckedAtText: String {

@@ -23,6 +23,7 @@ struct ContentView: View {
     @EnvironmentObject var containerManager: ContainerizationWrapper
     @EnvironmentObject var serviceManager: ServiceManager
     @EnvironmentObject var appNavigation: AppNavigation
+    @EnvironmentObject var releaseChecker: ContainerReleaseChecker
     @State private var showingCreateContainerSheet = false
     @State private var createImageSource: CreateImageSource = .image
     @State private var createImage = ""
@@ -101,6 +102,20 @@ struct ContentView: View {
                 mainContent
             }
         }
+        .alert(
+            "Container update available",
+            isPresented: $releaseChecker.shouldPresentUpdateAlert
+        ) {
+            Button("Download") {
+                let url = releaseChecker.latestReleaseURL ?? ContainerReleaseChecker.releasesPageURL
+                NSWorkspace.shared.open(url)
+            }
+            Button("Later", role: .cancel) { }
+        } message: {
+            let latest = releaseChecker.latestVersion ?? "?"
+            let installed = releaseChecker.installedVersion ?? "?"
+            Text("A newer version of the Apple container service is available.\nInstalled v\(installed) · Latest v\(latest)")
+        }
     }
 
     private var mainContent: some View {
@@ -167,6 +182,12 @@ struct ContentView: View {
         }
         .onReceive(appNavigation.$serviceRequestID.dropFirst()) { _ in
             selection = .service
+        }
+        .onReceive(serviceManager.$serviceDetails) { details in
+            releaseChecker.updateInstalledVersion(details?.version)
+        }
+        .task {
+            await releaseChecker.checkForUpdateIfNeeded()
         }
     }
 
@@ -1124,5 +1145,7 @@ struct ContentView_Previews: PreviewProvider {
         ContentView()
             .environmentObject(ContainerizationWrapper())
             .environmentObject(ServiceManager())
+            .environmentObject(AppNavigation())
+            .environmentObject(ContainerReleaseChecker())
     }
 }

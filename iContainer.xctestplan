@@ -1,0 +1,36 @@
+{
+  "configurations" : [
+    {
+      "id" : "6A522D55-D61D-4893-9A62-4FD2B01BC7C1",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "environmentVariableEntries" : [
+      {
+        "key" : "IDEPreferLogStreaming",
+        "value" : "YES"
+      }
+    ],
+    "performanceAntipatternCheckerEnabled" : true,
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:iContainer.xcodeproj",
+      "identifier" : "0363BE802E21BAAF00FE2CE1",
+      "name" : "iContainer"
+    }
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:iContainer.xcodeproj",
+        "identifier" : "0380FB562FC0A8BF00FFA823",
+        "name" : "iContainerTests"
+      }
+    }
+  ],
+  "version" : 1
+}

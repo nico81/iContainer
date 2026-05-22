@@ -7,6 +7,23 @@ The format follows Keep a Changelog, and versions use semantic versioning:
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-05-22
+
+### Added
+- `ContainerReleaseChecker`, a lightweight `ObservableObject` that polls
+  `https://api.github.com/repos/apple/container/releases/latest` (cached
+  for one hour) and compares the latest GitHub release tag against the
+  container CLI version reported by `container system status`.
+- Update-available banner in `WelcomeDashboardView`, shown beneath the
+  header when the installed CLI is older than the latest published
+  release. Surfaces installed/latest versions and a direct link to the
+  release page.
+- "Latest release" row in the Service detail Info tab plus an inline
+  "Download" link that appears only when an update is available.
+- Native alert (popup) presented at most once per detected version per
+  app session, with **Download** (opens the release URL) and **Later**
+  actions.
+
 ## [1.1.0] - 2026-05-22
 
 ### Added

@@ -13,6 +13,8 @@ struct WelcomeDashboardView: View {
     let onShowService: () -> Void
     let onSelectContainer: (Container) -> Void
 
+    @EnvironmentObject private var releaseChecker: ContainerReleaseChecker
+
     private var runningContainers: [Container] {
         containers.filter { $0.status == .running }
     }
@@ -29,6 +31,9 @@ struct WelcomeDashboardView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 header
+                if releaseChecker.isUpdateAvailable {
+                    updateAvailableBanner
+                }
                 metrics
                 actions
                 containerPreview
@@ -67,6 +72,37 @@ struct WelcomeDashboardView: View {
                     .textSelection(.enabled)
             }
         }
+    }
+
+    private var updateAvailableBanner: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.title2)
+                .foregroundColor(.accentColor)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("A new version of the Apple container service is available")
+                    .font(.subheadline.weight(.semibold))
+                if let latest = releaseChecker.latestVersion {
+                    let installed = releaseChecker.installedVersion ?? "?"
+                    Text("Installed v\(installed) · Latest v\(latest)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                Link(
+                    "Download latest release",
+                    destination: releaseChecker.latestReleaseURL ?? ContainerReleaseChecker.releasesPageURL
+                )
+                .font(.caption)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.accentColor.opacity(0.35), lineWidth: 1)
+        )
     }
 
     private var metrics: some View {
