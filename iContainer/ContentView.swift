@@ -236,6 +236,16 @@ struct ContentView: View {
         .onReceive(appNavigation.$overviewRequestID.dropFirst()) { _ in
             selection = nil
         }
+        .onChange(of: containerManager.containers) { _, newContainers in
+            // If the currently-selected container has been removed (deleted
+            // from sidebar / menu bar / Container menu), fall back to the
+            // overview so the detail pane doesn't show a "cannot load"
+            // error for a container that no longer exists.
+            guard case .container(let target) = selection else { return }
+            if !newContainers.contains(where: { $0.id == target.id }) {
+                selection = nil
+            }
+        }
         .onReceive(appNavigation.$settingsRequestID.dropFirst()) { _ in
             openWindow(id: "settings")
         }

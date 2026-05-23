@@ -5,6 +5,15 @@ Short, practical log of recent product/code decisions discussed in chat and impl
 
 ## Timeline (latest first)
 
+### 2026-05-23 — Release 1.3.2
+- Fixed: deleting the currently-selected container left the detail pane
+  showing a "cannot load" error for the now-missing id. `ContentView`
+  watches `containerManager.containers` via `onChange` and snaps the
+  selection back to the overview when the selected id disappears.
+- Removed the `AppVersion.displayString` row from the menu bar extra:
+  it duplicated the version already visible in the welcome header and
+  added clutter above the action buttons.
+
 ### 2026-05-23 — Release 1.3.1
 - Added a `Settings…` item to the menu bar extra
   (`MenuBarContainersView`), placed above `Quit`. Routes through

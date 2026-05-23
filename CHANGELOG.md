@@ -7,6 +7,21 @@ The format follows Keep a Changelog, and versions use semantic versioning:
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-05-23
+
+### Fixed
+- Detail pane no longer shows a "cannot load" error for a container that
+  was just deleted. `ContentView` now watches
+  `containerManager.containers` and falls back to the overview when the
+  currently-selected container id disappears from the list, covering
+  deletes triggered from the sidebar row, the Container menu, or the
+  menu bar extra.
+
+### Removed
+- Plain-text `AppVersion.displayString` row from the menu bar extra
+  (`MenuBarContainersView`). The version is still visible in the
+  welcome dashboard header, so the duplicate row was just noise.
+
 ## [1.3.1] - 2026-05-23
 
 ### Added

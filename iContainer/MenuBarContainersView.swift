@@ -13,10 +13,6 @@ struct MenuBarContainersView: View {
 
             Divider()
 
-            Text(AppVersion.displayString)
-
-            Divider()
-
             Button {
                 openMainWindow()
             } label: {
