@@ -19,6 +19,14 @@ private enum CreateImageSource: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+private enum ContainerStatusFilter: String, CaseIterable, Identifiable {
+    case all = "All"
+    case running = "Running"
+    case stopped = "Stopped"
+
+    var id: String { rawValue }
+}
+
 struct ContentView: View {
     @EnvironmentObject var containerManager: ContainerizationWrapper
     @EnvironmentObject var serviceManager: ServiceManager
@@ -73,6 +81,8 @@ struct ContentView: View {
     @State private var isSavingContainerEdit = false
     @State private var selection: SidebarSelection?
     @State private var sidebarSearchQuery: String = ""
+    @State private var containerStatusFilter: ContainerStatusFilter = .all
+    @State private var showingContainerFilterPopover = false
 
     // Confirmation state for Stop / Delete triggered by the Container
     // menu commands. The sidebar row owns its own equivalent dialogs for
@@ -82,12 +92,19 @@ struct ContentView: View {
     @State private var commandDeleteTarget: Container?
 
     /// Containers filtered by the sidebar search query (case-insensitive match
-    /// on name and image reference). An empty query returns all containers.
+    /// on name and image reference) and the status filter selected from the
+    /// "Containers" group menu.
     private var filteredContainers: [Container] {
         let query = sidebarSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return containerManager.containers }
         return containerManager.containers.filter { container in
-            container.name.localizedCaseInsensitiveContains(query)
+            switch containerStatusFilter {
+            case .all: break
+            case .running where container.status != .running: return false
+            case .stopped where container.status != .stopped: return false
+            default: break
+            }
+            guard !query.isEmpty else { return true }
+            return container.name.localizedCaseInsensitiveContains(query)
                 || (container.image?.localizedCaseInsensitiveContains(query) ?? false)
         }
     }
@@ -351,7 +368,7 @@ struct ContentView: View {
                 }
             }
             Section {
-                DisclosureGroup("Containers", isExpanded: $isContainersExpanded) {
+                DisclosureGroup(isExpanded: $isContainersExpanded) {
                     ForEach(filteredContainers) { container in
                         NavigationLink(value: SidebarSelection.container(ContainerNavigationTarget(id: container.id, tab: 0))) {
                             ContainerRowView(
@@ -365,10 +382,46 @@ struct ContentView: View {
                             )
                         }
                     }
-                    if filteredContainers.isEmpty && !sidebarSearchQuery.isEmpty {
+                    if filteredContainers.isEmpty && (!sidebarSearchQuery.isEmpty || containerStatusFilter != .all) {
                         Text("No matching containers")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                    }
+                } label: {
+                    HStack {
+                        Text("Containers")
+                        Spacer()
+                        Button {
+                            showingContainerFilterPopover = true
+                        } label: {
+                            Image(systemName: containerStatusFilter == .all
+                                  ? "line.3.horizontal.decrease.circle"
+                                  : "line.3.horizontal.decrease.circle.fill")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Filter containers by status")
+                        .popover(isPresented: $showingContainerFilterPopover, arrowEdge: .bottom) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                ForEach(ContainerStatusFilter.allCases) { filter in
+                                    Button {
+                                        containerStatusFilter = filter
+                                        showingContainerFilterPopover = false
+                                    } label: {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: "checkmark")
+                                                .frame(width: 12)
+                                                .opacity(filter == containerStatusFilter ? 1 : 0)
+                                            Text(filter.rawValue)
+                                            Spacer()
+                                        }
+                                        .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(8)
+                            .frame(minWidth: 140)
+                        }
                     }
                 }
             }

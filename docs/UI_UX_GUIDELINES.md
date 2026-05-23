@@ -52,6 +52,12 @@ Keep iContainer clear, predictable, and fast for container operations, with mini
 - Search is case-insensitive and matches on container name + image
   reference for containers, and on the full `name:tag` reference for
   images.
+- A status filter is available next to the `Containers` group label
+  (funnel icon → popover with `All` / `Running` / `Stopped`). The icon
+  uses its filled variant when a non-`All` filter is active so the
+  current state is visible at a glance. The status filter is `AND`ed
+  with the search query; the "No matching containers" caption fires
+  whenever either input zeroes the list.
 
 ## Container Actions
 - `Exec` flow is deprecated in UI and must not be reintroduced casually.

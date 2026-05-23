@@ -208,6 +208,14 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
     lists are empty and the field would dangle next to a blank sidebar)
   - the query is cleared automatically when the service stops, so the
     next session starts unfiltered
+- Sidebar container status filter:
+  - funnel icon next to the "Containers" group label opens a popover
+    with `All` / `Running` / `Stopped`; defaults to `All`
+  - icon switches to its filled variant when a non-`All` filter is
+    active so the user can see the state at a glance
+  - the filter is `AND`ed with the search query, and the
+    "No matching containers" empty-state fires when either input
+    zeroes the list
 - `Exec` feature has been removed from UI (replaced by persistent shell workflow).
 - Registry auth UX:
   - auth errors (`401`, `unauthorized`, missing credentials) are detected and shown with guided actions

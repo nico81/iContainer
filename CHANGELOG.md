@@ -7,6 +7,17 @@ The format follows Keep a Changelog, and versions use semantic versioning:
 
 ## [Unreleased]
 
+## [1.3.3] - 2026-05-23
+
+### Added
+- Container status filter in the sidebar. A funnel icon next to the
+  "Containers" group title opens a small popover with `All`, `Running`,
+  and `Stopped` options. The icon switches to its filled variant when
+  any filter other than `All` is active, so the current state is
+  visible at a glance. The status filter is `AND`ed with the existing
+  search query, and the existing "No matching containers" caption now
+  shows whenever either input narrows the list to zero.
+
 ## [1.3.2] - 2026-05-23
 
 ### Fixed

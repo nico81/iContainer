@@ -5,6 +5,15 @@ Short, practical log of recent product/code decisions discussed in chat and impl
 
 ## Timeline (latest first)
 
+### 2026-05-23 — Release 1.3.3
+- Added a status filter to the sidebar "Containers" group. A funnel
+  icon next to the section label opens a small popover with
+  `All` / `Running` / `Stopped`. The icon switches to its filled
+  variant when a non-`All` filter is active.
+- The filter is `AND`ed with the existing search query; the
+  "No matching containers" empty-state caption now fires whenever
+  either input zeroes the list out.
+
 ### 2026-05-23 — Release 1.3.2
 - Fixed: deleting the currently-selected container left the detail pane
   showing a "cannot load" error for the now-missing id. `ContentView`
