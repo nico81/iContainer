@@ -5,6 +5,80 @@ Short, practical log of recent product/code decisions discussed in chat and impl
 
 ## Timeline (latest first)
 
+### 2026-05-23 — Release 1.3.0 (Settings, notifications, polish)
+- New Settings system (`Settings.swift`, `SettingsView.swift`):
+  - dedicated `Window("Settings", id: "settings")` scene (workaround
+    for a macOS 26 publish-during-view-update loop on the SwiftUI
+    `Settings { ... }` scene)
+  - `NavigationSplitView` sidebar with five sections: General,
+    Notifications, Behavior, Terminal, Advanced
+  - preferences cover theme, menu bar icon visibility, launch at login
+    (`SMAppService`), auto-start container service on app open, quit
+    behavior, notification toggles, refresh cadence, confirmation
+    toggles (Stop/Delete/Prune), default in-container shell, terminal
+    font + size, force-black terminal, custom CLI path, default
+    registry host, and a "Reset all settings" action
+  - opened via App ▸ `Settings…` (⌘,), routed through
+    `AppNavigation.requestSettings` and
+    `@Environment(\.openWindow)` in `ContentView`
+- `NotificationService` wraps `UNUserNotificationCenter` with lazy
+  permission. Two notifications today:
+  - container stopped — diff-driven inside
+    `ContainerizationWrapper.notifyStatusTransitions` so we don't fire
+    on the initial poll
+  - action failed — emitted from Start/Stop/Delete `catch` blocks
+- `AppQuitDelegate` now honors the user's quit-behavior preference and
+  only prompts when set to *Ask*; informative copy switched to English.
+- `ContainerizationWrapper` and `ServiceManager` polling read
+  `settings.refreshIntervalSeconds` at start time. **Manual** truly
+  disables the timer.
+- CLI path resolution in `ServiceManager`, `ContainerizationWrapper`,
+  and `ContainerShellSession` checks the custom path from Settings
+  before the built-in candidates.
+- Default registry no longer hard-coded in the Login sheet or the
+  "Copy command" fallback — both source `settings.defaultRegistry`.
+- `ContainerShellSession` picks the user's preferred shell first and
+  falls back to `/bin/sh`.
+- `ContainerLogsView` and `ContainerShellView` honor the user's
+  monospaced font/size and an optional high-contrast black background.
+- Sidebar Stop/Delete buttons skip their dialog when the matching
+  confirmation toggle is off.
+- macOS 26 publish-loop guardrails:
+  - Settings is a regular `Window` scene, surfaced via
+    `CommandGroup(replacing: .appSettings)` so ⌘, still works
+  - `MenuBarExtra(isInserted:)` reads `@AppStorage` but discards
+    binding writes (set is a no-op)
+  - `SettingsManager.init` uses `_property = Published(initialValue:)`
+    to skip `objectWillChange` during scene installation
+
+### 2026-05-22 — Menu bar commands and keyboard shortcuts
+- Added a native macOS menu bar + keyboard shortcut layer via
+  `.commands { … }` on the main `Window` scene in `iContainerApp.swift`.
+  Every shortcut has a visible menu equivalent (HIG-compliant and
+  discoverable from the menu bar).
+- New menus:
+  - **File**: `New Container…` (⌘N), `Pull Image…` (⇧⌘P) — disabled
+    when the container service is stopped.
+  - **View** (after `.sidebar`): `Show Overview` (⌘0), `Show Container
+    Service` (⇧⌘0), `Refresh` (⌘R, disabled with service stopped).
+  - **Container**: `Start` (⌘↩), `Stop` (⇧⌘.), `Restart` (⇧⌘R),
+    `Show Info/Stats/Shell/Logs` (⌘1–⌘4), `Edit Settings…` (⌘E),
+    `Delete` (⌘⌫). Items track the sidebar selection and the
+    container's running/stopped status.
+  - **Registry**: `Login…` (⇧⌘L).
+- `AppNavigation` gained one-shot intent counters
+  (`newContainerRequestID`, `pullImageRequestID`, `registryLoginRequestID`,
+  `refreshRequestID`, `overviewRequestID`) plus a `containerCommandRequest`
+  (typed `ContainerCommand`) and a `selectedContainerID` mirror of the
+  sidebar selection so the App-scope command menu can enable/disable
+  items.
+- `ContentView` observes those intents via `.onReceive` and dispatches
+  them through a single `handleContainerCommand(_:)`. Menu-triggered
+  `Stop` and `Delete` use new confirmation alerts that match the inline
+  `ContainerRowView` dialogs exactly (same title, copy, and destructive
+  styling).
+- ⌘. (system Cancel) is intentionally avoided; Stop uses ⇧⌘. instead.
+
 ### 2026-05-22 — Release 1.1.0
 - Added sidebar search/filter:
   - case-insensitive filter on container name, container image, and

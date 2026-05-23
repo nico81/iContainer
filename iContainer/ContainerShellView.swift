@@ -48,10 +48,18 @@ final class ContainerShellSession: ObservableObject {
             return
         }
 
-        let candidates: [[String]] = [
-            ["exec", "-i", containerId, "/bin/sh"],
-            ["exec", containerId, "/bin/sh"]
-        ]
+        let preferredShell = SettingsManager.storedShellContainerPath()
+        var shellPaths = [preferredShell]
+        if preferredShell != "/bin/sh" {
+            shellPaths.append("/bin/sh")
+        }
+
+        let candidates: [[String]] = shellPaths.flatMap { shell in
+            [
+                ["exec", "-i", containerId, shell],
+                ["exec", containerId, shell]
+            ]
+        }
 
         for args in candidates {
             if startProcess(cliPath: cliPath, arguments: args) {
@@ -134,6 +142,9 @@ final class ContainerShellSession: ObservableObject {
     }
 
     private func resolveContainerCLIPath() -> String? {
+        if let custom = SettingsManager.storedCustomCLIPath() {
+            return custom
+        }
         let candidates = [
             "/usr/local/bin/container",
             "/opt/homebrew/bin/container"
@@ -191,16 +202,21 @@ struct ContainerShellView: View {
                         }
 
                         ScrollViewReader { scrollProxy in
+                            let s = SettingsManager.shared
                             ScrollView {
                                 Text(session.output.isEmpty ? "Shell output will appear here." : session.output)
-                                    .font(.caption.monospaced())
+                                    .font(.custom(s.terminalFontName, size: s.terminalFontSize, relativeTo: .body).monospaced())
+                                    .foregroundColor(s.forceBlackTerminal ? .white : nil)
                                     .textSelection(.enabled)
                                     .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(s.forceBlackTerminal ? 8 : 0)
                                 Color.clear
                                     .frame(height: 1)
                                     .id("SHELL_BOTTOM")
                             }
                             .frame(height: shellHeight)
+                            .background(s.forceBlackTerminal ? Color.black : Color.clear)
+                            .clipShape(RoundedRectangle(cornerRadius: s.forceBlackTerminal ? 6 : 0))
                             .onChange(of: session.output) { _, _ in
                                 guard autoScroll else { return }
                                 withAnimation(.easeOut(duration: 0.15)) {

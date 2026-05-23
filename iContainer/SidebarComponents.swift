@@ -127,7 +127,13 @@ struct ContainerRowView: View {
                             .controlSize(.small)
                         } else {
                             Button {
-                                showingStopConfirmation = true
+                                if SettingsManager.shared.confirmStop {
+                                    showingStopConfirmation = true
+                                } else {
+                                    Task {
+                                        await containerManager.stopContainer(containerId: container.id)
+                                    }
+                                }
                             } label: {
                                 Image(systemName: "stop.fill")
                                     .foregroundColor(.red)
@@ -149,10 +155,22 @@ struct ContainerRowView: View {
                 onNavigateToTab: onNavigateToTab,
                 onEditSettings: onEditSettings,
                 onRequestStop: {
-                    showingStopConfirmation = true
+                    if SettingsManager.shared.confirmStop {
+                        showingStopConfirmation = true
+                    } else {
+                        Task { await containerManager.stopContainer(containerId: container.id) }
+                    }
                 },
                 onDelete: {
-                    showingDeleteConfirmation = true
+                    if SettingsManager.shared.confirmDelete {
+                        showingDeleteConfirmation = true
+                    } else {
+                        isDeleting = true
+                        Task {
+                            await containerManager.deleteContainer(containerId: container.id)
+                            isDeleting = false
+                        }
+                    }
                 }
             )
         }

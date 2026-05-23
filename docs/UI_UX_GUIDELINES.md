@@ -110,6 +110,73 @@ Keep iContainer clear, predictable, and fast for container operations, with mini
 - Mount rows should show `Host Path` above `Container Path` with a clear divider for long-path readability.
 - Host mount paths should offer a compact Finder action with file/folder-specific icon.
 
+## Menu Bar and Keyboard Shortcuts
+- Every keyboard shortcut must have a visible menu equivalent in the
+  macOS menu bar (HIG requirement; also keeps shortcuts discoverable).
+- Shortcuts and their menu items are declared in one place
+  (`iContainerApp.appCommands`), never scattered across views.
+- Menu items must reflect availability:
+  - service-dependent items (`New Container…`, `Pull Image…`,
+    `Refresh`) are disabled when the container service is stopped.
+  - container-scoped items (`Container` menu) require a container
+    selection in the sidebar.
+  - `Start` is enabled only when the selected container is stopped;
+    `Stop` and `Restart` only when it is running.
+- Reserved combos to avoid:
+  - `⌘.` is macOS Cancel — never bind app actions to it. `Stop` uses
+    `⇧⌘.` instead.
+- Destructive shortcut actions (`Stop`, `Delete`) must show the same
+  confirmation alert as their inline sidebar equivalents — never
+  "fire and forget" destructive operations from the keyboard.
+- Current shortcut surface (kept in sync with `PROJECT_CONTEXT.md`):
+  - App: `Settings…` ⌘,
+  - File: `New Container…` ⌘N · `Pull Image…` ⇧⌘P
+  - View: `Show Overview` ⌘0 · `Show Container Service` ⇧⌘0 ·
+    `Refresh` ⌘R
+  - Container: `Start` ⌘↩ · `Stop` ⇧⌘. · `Restart` ⇧⌘R ·
+    `Show Info/Stats/Shell/Logs` ⌘1–⌘4 · `Edit Settings…` ⌘E ·
+    `Delete` ⌘⌫
+  - Registry: `Login…` ⇧⌘L
+
+## Settings and preferences
+- Settings open in their own window (⌘, or App menu ▸ Settings…) and use
+  a sidebar layout with five sections: General, Notifications, Behavior,
+  Terminal, Advanced. Keep section copy short and use grouped panels
+  with a one-line caption above each toggle group.
+- Every preference must have a sensible default and a reversible UI
+  control — destructive defaults (forcing notifications on, defaulting
+  to "Always stop service on quit", etc.) are not allowed.
+- Confirmation toggles (`Confirm Stop`, `Confirm Delete`, `Confirm
+  Prune`) are user-controllable but default to **on**. Both sidebar
+  buttons and menu commands must consult the matching toggle before
+  showing the dialog.
+- The default registry shown in Registry Login defaults to
+  `settings.defaultRegistry`. Don't hard-code Docker Hub aliases in
+  new code — read the preference.
+- Refresh interval ranges from Manual (no timer) to 10 s. **Manual**
+  must actually disable the timer — don't fall back to a hidden minimum
+  cadence.
+- Theme selection (System/Light/Dark) is applied via
+  `preferredColorScheme` on both the main and Settings windows.
+
+## Notifications
+- Two notification types are exposed: container stopped and action
+  failed. Each is gated by its own master toggle; never bypass the
+  toggle.
+- Notifications must not duplicate in-app feedback for the same user
+  intent — they exist so the user can leave the app and still know
+  when something happens. Status-change notifications are diff-driven
+  (running → stopped) and avoid firing on the initial poll.
+- Body copy stays short and concrete: container name in quotes, plain
+  English, no shell traces.
+
+## Terminal customization
+- The Shell and Logs panels honor the user's monospaced font, font
+  size, and an optional high-contrast black background. New
+  text-heavy panels that show CLI output should follow the same
+  pattern (`SettingsManager.shared.terminalFontName`, `terminalFontSize`,
+  `forceBlackTerminal`).
+
 ## Visual Consistency
 - Reuse existing component language (`DetailSection`, `DetailRow`, status badge style).
 - Keep icon semantics consistent:

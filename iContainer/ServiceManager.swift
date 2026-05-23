@@ -26,8 +26,12 @@ class ServiceManager: ObservableObject {
 
     func startPolling() {
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
-            Task { await self?.checkServiceStatus() }
+        timer = nil
+        let interval = SettingsManager.storedRefreshIntervalSeconds()
+        if interval > 0 {
+            timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+                Task { await self?.checkServiceStatus() }
+            }
         }
         Task { await checkServiceStatus() }
     }
@@ -245,6 +249,9 @@ private extension ServiceManager {
     }
 
     nonisolated static func resolveCLIPath() -> String? {
+        if let custom = SettingsManager.storedCustomCLIPath() {
+            return custom
+        }
         let candidates = [
             "/usr/local/bin/container",
             "/opt/homebrew/bin/container"

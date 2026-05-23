@@ -22,6 +22,7 @@ class ContainerizationWrapper: ObservableObject {
     private let logger = Logger(label: "iContainer")
     private var timer: Timer?
     private var isPolling = false
+    private var lastKnownStatuses: [String: ContainerStatus] = [:]
 
     init() {
         checkDependencies()
@@ -39,9 +40,13 @@ class ContainerizationWrapper: ObservableObject {
     // MARK: - Polling
     func startPolling() {
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
-            Task {
-                await self?.pollContainerState()
+        timer = nil
+        let interval = SettingsManager.storedRefreshIntervalSeconds()
+        if interval > 0 {
+            timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+                Task {
+                    await self?.pollContainerState()
+                }
             }
         }
         Task {
@@ -109,6 +114,9 @@ class ContainerizationWrapper: ObservableObject {
     }
 
     nonisolated private static func resolveCLIPath() -> String? {
+        if let custom = SettingsManager.storedCustomCLIPath() {
+            return custom
+        }
         let candidates = [
             "/usr/local/bin/container",
             "/opt/homebrew/bin/container"
@@ -155,10 +163,30 @@ class ContainerizationWrapper: ObservableObject {
                 if self.containers != newContainers {
                     self.containers = newContainers
                 }
+                notifyStatusTransitions(for: newContainers)
             }
         } catch {
             logger.error("Errore nel refresh dei container: \(error)")
             self.containers = []
+        }
+    }
+
+    /// Fires a system notification whenever a container that we previously
+    /// saw as running has transitioned to stopped. New containers and
+    /// containers that disappear from the list are ignored — we only care
+    /// about live → stopped, which covers explicit user stops as well as
+    /// crashes. User stops surfaced here are intentional: macOS coalesces
+    /// duplicates and the user has a master toggle in Settings.
+    private func notifyStatusTransitions(for current: [Container]) {
+        defer {
+            lastKnownStatuses = Dictionary(uniqueKeysWithValues: current.map { ($0.id, $0.status) })
+        }
+        guard !lastKnownStatuses.isEmpty else { return }
+        for container in current {
+            guard let previous = lastKnownStatuses[container.id] else { continue }
+            if previous == .running, container.status == .stopped {
+                NotificationService.shared.notifyContainerStopped(name: container.name)
+            }
         }
     }
 
@@ -274,6 +302,11 @@ class ContainerizationWrapper: ObservableObject {
             await refreshContainers()
         } catch {
             logger.error("Errore nell'avvio del container: \(error)")
+            NotificationService.shared.notifyActionFailed(
+                action: "Start",
+                target: containerName(for: containerId),
+                message: error.localizedDescription
+            )
         }
         updatingContainerIDs.remove(containerId)
     }
@@ -285,8 +318,17 @@ class ContainerizationWrapper: ObservableObject {
             await refreshContainers()
         } catch {
             logger.error("Errore nello stop del container: \(error)")
+            NotificationService.shared.notifyActionFailed(
+                action: "Stop",
+                target: containerName(for: containerId),
+                message: error.localizedDescription
+            )
         }
         updatingContainerIDs.remove(containerId)
+    }
+
+    private func containerName(for containerId: String) -> String {
+        containers.first(where: { $0.id == containerId })?.name ?? containerId
     }
 
     func deleteContainer(containerId: String) async {
@@ -316,6 +358,11 @@ class ContainerizationWrapper: ObservableObject {
                 } catch {
                     logger.error("Errore nell'eliminazione con rm: \(error)")
                     lastErrorMessage = error.localizedDescription
+                    NotificationService.shared.notifyActionFailed(
+                        action: "Delete",
+                        target: containerName(for: containerId),
+                        message: error.localizedDescription
+                    )
                 }
             }
         }

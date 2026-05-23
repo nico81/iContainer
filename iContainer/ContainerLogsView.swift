@@ -59,16 +59,21 @@ struct ContainerLogsView: View {
                         }
 
                         ScrollViewReader { proxy in
+                            let s = SettingsManager.shared
                             ScrollView {
                                 Text(filteredLogs.isEmpty ? "No logs yet." : filteredLogs)
-                                    .font(.caption.monospaced())
+                                    .font(.custom(s.terminalFontName, size: s.terminalFontSize, relativeTo: .body).monospaced())
+                                    .foregroundColor(s.forceBlackTerminal ? .white : nil)
                                     .textSelection(.enabled)
                                     .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(s.forceBlackTerminal ? 8 : 0)
                                 Color.clear
                                     .frame(height: 1)
                                     .id("BOTTOM")
                             }
                             .frame(height: logAreaHeight)
+                            .background(s.forceBlackTerminal ? Color.black : Color.clear)
+                            .clipShape(RoundedRectangle(cornerRadius: s.forceBlackTerminal ? 6 : 0))
                             .onChange(of: logsText) { _, _ in
                                 if autoScroll {
                                     proxy.scrollTo("BOTTOM", anchor: .bottom)

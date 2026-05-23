@@ -24,6 +24,7 @@ struct ContentView: View {
     @EnvironmentObject var serviceManager: ServiceManager
     @EnvironmentObject var appNavigation: AppNavigation
     @EnvironmentObject var releaseChecker: ContainerReleaseChecker
+    @Environment(\.openWindow) private var openWindow
     @State private var showingCreateContainerSheet = false
     @State private var createImageSource: CreateImageSource = .image
     @State private var createImage = ""
@@ -50,7 +51,7 @@ struct ContentView: View {
     @State private var pullImageReference = ""
     @State private var isPullingImage = false
     @State private var showingRegistryLoginSheet = false
-    @State private var registryHost = "registry-1.docker.io"
+    @State private var registryHost = ""
     @State private var registryUsername = ""
     @State private var registryPassword = ""
     @State private var isLoggingInRegistry = false
@@ -72,6 +73,13 @@ struct ContentView: View {
     @State private var isSavingContainerEdit = false
     @State private var selection: SidebarSelection?
     @State private var sidebarSearchQuery: String = ""
+
+    // Confirmation state for Stop / Delete triggered by the Container
+    // menu commands. The sidebar row owns its own equivalent dialogs for
+    // mouse-driven actions; these mirror that behaviour for keyboard
+    // shortcuts so the experience matches "come la UI attuale".
+    @State private var commandStopTarget: Container?
+    @State private var commandDeleteTarget: Container?
 
     /// Containers filtered by the sidebar search query (case-insensitive match
     /// on name and image reference). An empty query returns all containers.
@@ -170,6 +178,9 @@ struct ContentView: View {
             }
         }
         .onChange(of: showingRegistryLoginSheet) { isPresented in
+            if isPresented, registryHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                registryHost = SettingsManager.shared.defaultRegistry
+            }
             guard !isPresented, shouldReturnToCreateAfterRegistryLogin else { return }
             shouldReturnToCreateAfterRegistryLogin = false
             DispatchQueue.main.async {
@@ -188,6 +199,132 @@ struct ContentView: View {
         }
         .task {
             await releaseChecker.checkForUpdateIfNeeded()
+        }
+        // Mirror the sidebar selection into AppNavigation so the
+        // App-scope command menu can enable/disable items based on
+        // the currently-selected container.
+        .onChange(of: selection) { newValue in
+            switch newValue {
+            case .container(let target):
+                appNavigation.selectedContainerID = target.id
+            default:
+                appNavigation.selectedContainerID = nil
+            }
+        }
+        // Menu / keyboard shortcut intents from the App scene.
+        .onReceive(appNavigation.$newContainerRequestID.dropFirst()) { _ in
+            guard serviceManager.isServiceRunning else { return }
+            createErrorMessage = nil
+            containerManager.lastErrorMessage = nil
+            containerManager.lastBuildOutput = nil
+            showingCreateContainerSheet = true
+        }
+        .onReceive(appNavigation.$pullImageRequestID.dropFirst()) { _ in
+            guard serviceManager.isServiceRunning else { return }
+            showingPullImageAlert = true
+        }
+        .onReceive(appNavigation.$registryLoginRequestID.dropFirst()) { _ in
+            showingRegistryLoginSheet = true
+        }
+        .onReceive(appNavigation.$refreshRequestID.dropFirst()) { _ in
+            guard serviceManager.isServiceRunning else { return }
+            Task {
+                await containerManager.refreshContainers()
+                await containerManager.refreshImages()
+            }
+        }
+        .onReceive(appNavigation.$overviewRequestID.dropFirst()) { _ in
+            selection = nil
+        }
+        .onReceive(appNavigation.$settingsRequestID.dropFirst()) { _ in
+            openWindow(id: "settings")
+        }
+        .onReceive(appNavigation.$containerCommandRequest.compactMap { $0 }) { request in
+            handleContainerCommand(request.command)
+        }
+        .confirmationDialog(
+            "Delete Container?",
+            isPresented: Binding(
+                get: { commandDeleteTarget != nil },
+                set: { if !$0 { commandDeleteTarget = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: commandDeleteTarget
+        ) { target in
+            Button("Delete", role: .destructive) {
+                let id = target.id
+                Task {
+                    await containerManager.deleteContainer(containerId: id)
+                }
+                commandDeleteTarget = nil
+            }
+            Button("Cancel", role: .cancel) {
+                commandDeleteTarget = nil
+            }
+        } message: { target in
+            Text("Are you sure you want to delete the container \"\(target.name)\"? This action cannot be undone.")
+        }
+        .alert(
+            "Stop Container?",
+            isPresented: Binding(
+                get: { commandStopTarget != nil },
+                set: { if !$0 { commandStopTarget = nil } }
+            ),
+            presenting: commandStopTarget
+        ) { target in
+            Button("Stop", role: .destructive) {
+                let id = target.id
+                Task {
+                    await containerManager.stopContainer(containerId: id)
+                }
+                commandStopTarget = nil
+            }
+            Button("Cancel", role: .cancel) {
+                commandStopTarget = nil
+            }
+        } message: { target in
+            Text("Are you sure you want to stop the container \"\(target.name)\"?")
+        }
+    }
+
+    /// Resolves a menu-issued `ContainerCommand` against the currently
+    /// selected container. Stop/Delete go through a confirmation alert to
+    /// match the inline UI behaviour; Start/Restart/Edit/ShowTab fire
+    /// directly.
+    private func handleContainerCommand(_ command: ContainerCommand) {
+        guard case .container(let target) = selection,
+              let container = containerManager.containers.first(where: { $0.id == target.id })
+        else { return }
+
+        switch command {
+        case .start:
+            guard container.status == .stopped else { return }
+            Task {
+                await containerManager.startContainer(containerId: container.id)
+            }
+        case .stop:
+            guard container.status == .running else { return }
+            if SettingsManager.shared.confirmStop {
+                commandStopTarget = container
+            } else {
+                Task { await containerManager.stopContainer(containerId: container.id) }
+            }
+        case .restart:
+            guard container.status == .running else { return }
+            Task {
+                await containerManager.stopContainer(containerId: container.id)
+                await containerManager.startContainer(containerId: container.id)
+            }
+        case .showTab(let tab):
+            selection = .container(ContainerNavigationTarget(id: container.id, tab: tab))
+        case .edit:
+            openEditContainerSheet(containerId: container.id)
+        case .delete:
+            if SettingsManager.shared.confirmDelete {
+                commandDeleteTarget = container
+            } else {
+                Task { await containerManager.deleteContainer(containerId: container.id) }
+            }
         }
     }
 
@@ -936,7 +1073,7 @@ struct ContentView: View {
     private func copyRegistryLoginCommand() {
         let host = registryHost.trimmingCharacters(in: .whitespacesAndNewlines)
         let username = registryUsername.trimmingCharacters(in: .whitespacesAndNewlines)
-        let resolvedHost = host.isEmpty ? "registry-1.docker.io" : host
+        let resolvedHost = host.isEmpty ? SettingsManager.shared.defaultRegistry : host
         let resolvedUser = username.isEmpty ? "<username>" : username
         let command = containerManager.registryLoginCommand(host: resolvedHost, username: resolvedUser)
         NSPasteboard.general.clearContents()

@@ -14,10 +14,27 @@ final class AppQuitDelegate: NSObject, NSApplicationDelegate {
             return .terminateNow
         }
 
+        // Honor the user's "Chiusura" preference from Settings when it
+        // is set to anything other than `.ask`, so we don't pop the
+        // confirmation dialog on every quit.
+        switch SettingsManager.storedQuitBehavior() {
+        case .leaveRunning:
+            return .terminateNow
+        case .stopService:
+            isCompletingTermination = true
+            Task {
+                await serviceManager.stopService()
+                sender.reply(toApplicationShouldTerminate: true)
+            }
+            return .terminateLater
+        case .ask:
+            break
+        }
+
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "Apple container service is running"
-        alert.informativeText = "Vuoi fermare il servizio container prima di chiudere iContainer?"
+        alert.informativeText = "Do you want to stop the container service before quitting iContainer?"
         alert.addButton(withTitle: "Stop Service and Quit")
         alert.addButton(withTitle: "Quit and Leave Running")
         alert.addButton(withTitle: "Cancel")
