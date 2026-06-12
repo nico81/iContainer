@@ -16,3 +16,6 @@ build/
 # Design sources (not used by the build; final assets live in
 # iContainer/Assets.xcassets and iContainer/Logo.icon)
 Logo/
+
+# Local working notes (duplicates CHANGELOG.md with chat-level detail)
+docs/RECENT_CHANGES.md
