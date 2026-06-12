@@ -19,3 +19,6 @@ Logo/
 
 # Local working notes (duplicates CHANGELOG.md with chat-level detail)
 docs/RECENT_CHANGES.md
+
+# Release artifacts (attached to GitHub releases, not tracked)
+dist/

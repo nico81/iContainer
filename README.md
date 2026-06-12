@@ -28,10 +28,20 @@ A native macOS app to manage [Apple Container](https://github.com/apple/containe
 1. Install the Apple Container CLI: download the latest `.pkg` from the
    [releases page](https://github.com/apple/container/releases) and install it,
    confirming the recommended default kernel.
-2. Build and run iContainer (see below), or grab a release build if available.
+2. Download the latest iContainer build from
+   [Releases](../../releases), or build from source (see below).
 3. Start the container service from the app — everything else flows from there.
 
 If the CLI is missing, the app shows a setup screen with a download link instead of the main UI.
+
+> **Note on the first launch** — release builds are currently not notarized.
+> macOS will block the app the first time: right-click the app → **Open**, or
+> allow it under **System Settings → Privacy & Security → Open Anyway**.
+> Alternatively, clear the quarantine flag from the terminal:
+>
+> ```sh
+> xattr -d com.apple.quarantine /Applications/iContainer.app
+> ```
 
 ## Building from source
 
