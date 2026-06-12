@@ -7,6 +7,30 @@ The format follows Keep a Changelog, and versions use semantic versioning:
 
 ## [Unreleased]
 
+## [1.3.4] - 2026-06-12
+
+### Added
+- MIT `LICENSE` and a proper English `README.md` (features,
+  requirements, getting started with a first-launch Gatekeeper note,
+  build-from-source instructions, documentation links). The old
+  Italian `readme.txt` is gone; its install notes moved into the
+  README.
+- `scripts/make-release.sh`: builds the Release configuration, ad-hoc
+  signs the app, and packages `dist/iContainer-v<version>.zip` ready to
+  attach to a GitHub release. `SIGN_IDENTITY` is overridable for a
+  future Developer ID + notarization flow.
+
+### Changed
+- All remaining Italian user-facing strings, log messages, and code
+  comments translated to English (CLI-not-found errors, registry login
+  hints, required-field validation, `logger.error` calls).
+
+### Removed
+- Design sources (`Logo/`), `.DS_Store` files, `xcuserdata/`, the
+  `container_data/web-test` Dockerfile, and `docs/RECENT_CHANGES.md`
+  (kept as local working notes) are no longer tracked; `.gitignore`
+  extended accordingly.
+
 ## [1.3.3] - 2026-05-23
 
 ### Added

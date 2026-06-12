@@ -258,6 +258,13 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
 - During manual relaunch, this sequence is reliable:
   - `pkill -x iContainer || true`
   - `open ~/Library/Developer/Xcode/DerivedData/iContainer-*/Build/Products/Debug/iContainer.app`
+- Release packaging:
+  - `scripts/make-release.sh` builds Release, ad-hoc signs, and emits
+    `dist/iContainer-v<version>.zip` (version read from
+    `MARKETING_VERSION`). Releases are not notarized; the README
+    documents the first-launch Gatekeeper bypass. When a Developer ID
+    certificate is available, set `SIGN_IDENTITY` and add a
+    `notarytool` step.
 
 ## Parsing Layer
 - All parsing of `container` CLI output lives in `CLIParsers.swift` and
