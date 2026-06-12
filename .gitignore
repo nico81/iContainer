@@ -1,4 +1,18 @@
+# macOS
 .DS_Store
 
-# Xcode user interface state
+# Xcode
 *.xcuserstate
+xcuserdata/
+DerivedData/
+build/
+*.xcscmblueprint
+*.xccheckout
+
+# Swift Package Manager
+.swiftpm/
+.build/
+
+# Design sources (not used by the build; final assets live in
+# iContainer/Assets.xcassets and iContainer/Logo.icon)
+Logo/

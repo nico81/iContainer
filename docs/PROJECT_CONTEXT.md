@@ -257,7 +257,7 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
   - `xcodebuild -project iContainer.xcodeproj -scheme iContainer -configuration Debug build`
 - During manual relaunch, this sequence is reliable:
   - `pkill -x iContainer || true`
-  - `open /Users/nico/Library/Developer/Xcode/DerivedData/iContainer-fpbjeiozuugbpjglzrjgziqvmlne/Build/Products/Debug/iContainer.app`
+  - `open ~/Library/Developer/Xcode/DerivedData/iContainer-*/Build/Products/Debug/iContainer.app`
 
 ## Parsing Layer
 - All parsing of `container` CLI output lives in `CLIParsers.swift` and

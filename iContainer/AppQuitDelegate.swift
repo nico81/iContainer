@@ -14,7 +14,7 @@ final class AppQuitDelegate: NSObject, NSApplicationDelegate {
             return .terminateNow
         }
 
-        // Honor the user's "Chiusura" preference from Settings when it
+        // Honor the user's quit-behavior preference from Settings when it
         // is set to anything other than `.ask`, so we don't pop the
         // confirmation dialog on every quit.
         switch SettingsManager.storedQuitBehavior() {

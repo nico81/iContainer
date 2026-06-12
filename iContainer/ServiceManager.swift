@@ -140,7 +140,7 @@ class ServiceManager: ObservableObject {
     func startFollowingServiceLogs() {
         guard !isFollowingServiceLogs else { return }
         guard let cliPath = Self.resolveCLIPath() else {
-            serviceLogs = "CLI 'container' non trovata"
+            serviceLogs = "container CLI not found"
             serviceLogsCheckedAt = Date()
             return
         }
@@ -233,7 +233,7 @@ private extension ServiceManager {
 
     nonisolated static func runCommandBlocking(_ arguments: [String]) throws -> (output: String, status: Int32) {
         guard let cliPath = resolveCLIPath() else {
-            throw NSError(domain: "ServiceManager", code: 1, userInfo: [NSLocalizedDescriptionKey: "CLI 'container' non trovata"])
+            throw NSError(domain: "ServiceManager", code: 1, userInfo: [NSLocalizedDescriptionKey: "container CLI not found"])
         }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: cliPath)

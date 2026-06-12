@@ -86,7 +86,7 @@ class ContainerizationWrapper: ObservableObject {
 
     nonisolated private static func runCommandBlocking(_ arguments: [String], standardInput: String? = nil) throws -> (output: String, status: Int32) {
         guard let cliPath = resolveCLIPath() else {
-            throw NSError(domain: "iContainer", code: 1, userInfo: [NSLocalizedDescriptionKey: "CLI 'container' non trovata"])
+            throw NSError(domain: "iContainer", code: 1, userInfo: [NSLocalizedDescriptionKey: "container CLI not found"])
         }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: cliPath)
@@ -166,7 +166,7 @@ class ContainerizationWrapper: ObservableObject {
                 notifyStatusTransitions(for: newContainers)
             }
         } catch {
-            logger.error("Errore nel refresh dei container: \(error)")
+            logger.error("Failed to refresh containers: \(error)")
             self.containers = []
         }
     }
@@ -199,7 +199,7 @@ class ContainerizationWrapper: ObservableObject {
                 self.images = parsed
             }
         } catch {
-            logger.error("Errore nel refresh delle immagini: \(error)")
+            logger.error("Failed to refresh images: \(error)")
         }
     }
 
@@ -214,7 +214,7 @@ class ContainerizationWrapper: ObservableObject {
             await refreshImages()
             await refreshRegistryAuthStatus()
         } catch {
-            logger.error("Errore nel pull dell'immagine: \(error)")
+            logger.error("Failed to pull image: \(error)")
             lastErrorMessage = error.localizedDescription
             if Self.isRegistryAuthError(error.localizedDescription) {
                 registryAuthState = .notAuthenticated
@@ -232,7 +232,7 @@ class ContainerizationWrapper: ObservableObject {
             _ = try await runCommand(["image", "delete", trimmed])
             await refreshImages()
         } catch {
-            logger.error("Errore nell'eliminazione dell'immagine: \(error)")
+            logger.error("Failed to delete image: \(error)")
             lastErrorMessage = error.localizedDescription
         }
     }
@@ -244,7 +244,7 @@ class ContainerizationWrapper: ObservableObject {
             let output = try await runCommand(["image", "inspect", trimmed])
             return output
         } catch {
-            logger.error("Errore nell'ispezione dell'immagine: \(error)")
+            logger.error("Failed to inspect image: \(error)")
             lastErrorMessage = error.localizedDescription
             return nil
         }
@@ -285,7 +285,7 @@ class ContainerizationWrapper: ObservableObject {
             await refreshImages()
             return true
         } catch {
-            logger.error("Errore nella build dell'immagine: \(error)")
+            logger.error("Failed to build image: \(error)")
             lastErrorMessage = error.localizedDescription
             lastBuildOutput = error.localizedDescription
             if Self.isRegistryAuthError(error.localizedDescription) {
@@ -301,7 +301,7 @@ class ContainerizationWrapper: ObservableObject {
             _ = try await runCommand(["start", containerId])
             await refreshContainers()
         } catch {
-            logger.error("Errore nell'avvio del container: \(error)")
+            logger.error("Failed to start container: \(error)")
             NotificationService.shared.notifyActionFailed(
                 action: "Start",
                 target: containerName(for: containerId),
@@ -317,7 +317,7 @@ class ContainerizationWrapper: ObservableObject {
             _ = try await runCommand(["stop", containerId])
             await refreshContainers()
         } catch {
-            logger.error("Errore nello stop del container: \(error)")
+            logger.error("Failed to stop container: \(error)")
             NotificationService.shared.notifyActionFailed(
                 action: "Stop",
                 target: containerName(for: containerId),
@@ -344,19 +344,19 @@ class ContainerizationWrapper: ObservableObject {
             await refreshContainers()
             return
         } catch {
-            logger.error("Errore nell'eliminazione del container: \(error)")
+            logger.error("Failed to delete container: \(error)")
             do {
                 _ = try await runCommand(["delete", "--force", containerId])
                 await refreshContainers()
                 return
             } catch {
-                logger.error("Errore nell'eliminazione forzata del container: \(error)")
+                logger.error("Failed to force-delete container: \(error)")
                 do {
                     _ = try await runCommand(["rm", containerId])
                     await refreshContainers()
                     return
                 } catch {
-                    logger.error("Errore nell'eliminazione con rm: \(error)")
+                    logger.error("Failed to delete container with rm: \(error)")
                     lastErrorMessage = error.localizedDescription
                     NotificationService.shared.notifyActionFailed(
                         action: "Delete",
@@ -416,7 +416,7 @@ class ContainerizationWrapper: ObservableObject {
             await refreshContainers()
             await refreshRegistryAuthStatus()
         } catch {
-            logger.error("Errore nella creazione del container: \(error)")
+            logger.error("Failed to create container: \(error)")
             lastErrorMessage = error.localizedDescription
             if Self.isRegistryAuthError(error.localizedDescription) {
                 registryAuthState = .notAuthenticated
@@ -520,7 +520,7 @@ class ContainerizationWrapper: ObservableObject {
         let trimmedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedUser = username.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedHost.isEmpty, !trimmedUser.isEmpty, !password.isEmpty else {
-            lastErrorMessage = "Host, username e password sono obbligatori."
+            lastErrorMessage = "Host, username, and password are required."
             return false
         }
 
@@ -656,7 +656,7 @@ class ContainerizationWrapper: ObservableObject {
                 return decoded.first
             }
         } catch {
-            logger.error("Errore nell'ispezione del container: \(error)")
+            logger.error("Failed to inspect container: \(error)")
         }
         return nil
     }
@@ -665,7 +665,7 @@ class ContainerizationWrapper: ObservableObject {
         do {
             return try await runCommand(["inspect", containerId])
         } catch {
-            logger.error("Errore nell'ispezione raw del container: \(error)")
+            logger.error("Failed to raw-inspect container: \(error)")
             return nil
         }
     }
@@ -743,7 +743,7 @@ class ContainerizationWrapper: ObservableObject {
             do {
                 return try await runCommand(fallback)
             } catch {
-                logger.error("Errore nell'esecuzione comando nel container: \(error)")
+                logger.error("Failed to run command in container: \(error)")
                 lastErrorMessage = error.localizedDescription
                 return nil
             }

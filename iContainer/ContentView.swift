@@ -87,7 +87,7 @@ struct ContentView: View {
     // Confirmation state for Stop / Delete triggered by the Container
     // menu commands. The sidebar row owns its own equivalent dialogs for
     // mouse-driven actions; these mirror that behaviour for keyboard
-    // shortcuts so the experience matches "come la UI attuale".
+    // shortcuts so the experience matches the inline UI.
     @State private var commandStopTarget: Container?
     @State private var commandDeleteTarget: Container?
 
@@ -889,7 +889,7 @@ struct ContentView: View {
                 }
             }
 
-            Text("Per Docker Hub usa host `registry-1.docker.io` e un Personal Access Token.")
+            Text("For Docker Hub use host `registry-1.docker.io` and a Personal Access Token.")
                 .font(.caption2)
                 .foregroundColor(.secondary)
         }
@@ -1093,7 +1093,7 @@ struct ContentView: View {
             if let hosts = authenticatedRegistryHosts, !hosts.isEmpty {
                 return "Registry rejected the image pull.\n\(message)\n\nSaved credentials exist for \(hosts.joined(separator: ", ")). Check that the image reference includes the correct namespace, for example owner/image:tag, that the repository is accessible, and that the saved token has permission."
             }
-            return "Registry authentication required.\n\(message)\n\nApri il login guidato per autenticarti e riprovare."
+            return "Registry authentication required.\n\(message)\n\nOpen the guided login to authenticate and retry."
         }
         return message
     }
