@@ -14,6 +14,7 @@ struct WelcomeDashboardView: View {
     let onSelectContainer: (Container) -> Void
 
     @EnvironmentObject private var releaseChecker: ContainerReleaseChecker
+    @AppStorage(SettingsManager.Keys.glassButtons) private var glassButtons = SettingsManager.Defaults.glassButtons
 
     private var runningContainers: [Container] {
         containers.filter { $0.status == .running }
@@ -116,14 +117,14 @@ struct WelcomeDashboardView: View {
             Button(action: onCreateContainer) {
                 Label("Create Container", systemImage: "plus")
             }
-            .buttonStyle(.borderedProminent)
+            .actionButtonStyle(prominent: true, glass: glassButtons)
             .controlSize(.large)
             .disabled(!isServiceRunning)
 
             Button(action: onPullImage) {
                 Label("Pull Image", systemImage: "square.and.arrow.down")
             }
-            .buttonStyle(.bordered)
+            .actionButtonStyle(glass: glassButtons)
             .controlSize(.large)
             .disabled(!isServiceRunning)
 
@@ -131,7 +132,7 @@ struct WelcomeDashboardView: View {
                 Button(action: onShowService) {
                     Label("Apple container service details", systemImage: "server.rack")
                 }
-                .buttonStyle(.bordered)
+                .actionButtonStyle(glass: glassButtons)
                 .controlSize(.large)
             }
         }

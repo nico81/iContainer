@@ -47,6 +47,7 @@ struct ImagesView: View {
 struct ImageRowView: View {
     let image: ContainerImage
     @EnvironmentObject var containerManager: ContainerizationWrapper
+    @AppStorage(SettingsManager.Keys.glassButtons) private var glassButtons = SettingsManager.Defaults.glassButtons
     @State private var showingDeleteConfirmation = false
     @State private var isDeleting = false
     @State private var rowInspectDetails: ImageInspectDetails?
@@ -78,7 +79,7 @@ struct ImageRowView: View {
                         .frame(width: 16, height: 16)
                 }
             }
-            .buttonStyle(.bordered)
+            .actionButtonStyle(glass: glassButtons)
             .controlSize(.small)
             .disabled(isDeleting || containerManager.updatingImageIDs.contains(image.id))
         }

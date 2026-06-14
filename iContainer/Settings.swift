@@ -121,6 +121,7 @@ final class SettingsManager: ObservableObject {
         static let quitBehavior = "settings.quitBehavior"
         static let hideXPCNoiseInLogs = "settings.hideXPCNoiseInLogs"
         static let sidebarTinted = "settings.sidebarTinted"
+        static let glassButtons = "settings.glassButtons"
     }
 
     nonisolated enum Defaults {
@@ -143,6 +144,7 @@ final class SettingsManager: ObservableObject {
         static let quitBehavior: QuitBehavior = .ask
         static let hideXPCNoiseInLogs = true
         static let sidebarTinted = true
+        static let glassButtons = true
     }
 
     // MARK: Published preferences
@@ -235,6 +237,13 @@ final class SettingsManager: ObservableObject {
         didSet { store.set(sidebarTinted, forKey: Keys.sidebarTinted) }
     }
 
+    /// When on, primary action buttons use the Liquid Glass button style;
+    /// off falls back to the standard bordered style for higher contrast /
+    /// usability.
+    @Published var glassButtons: Bool {
+        didSet { store.set(glassButtons, forKey: Keys.glassButtons) }
+    }
+
     private let store: UserDefaults
 
     init(store: UserDefaults = .standard) {
@@ -268,6 +277,7 @@ final class SettingsManager: ObservableObject {
         _quitBehavior = Published(initialValue: (store.string(forKey: Keys.quitBehavior).flatMap(QuitBehavior.init(rawValue:))) ?? Defaults.quitBehavior)
         _hideXPCNoiseInLogs = Published(initialValue: store.object(forKey: Keys.hideXPCNoiseInLogs) as? Bool ?? Defaults.hideXPCNoiseInLogs)
         _sidebarTinted = Published(initialValue: store.object(forKey: Keys.sidebarTinted) as? Bool ?? Defaults.sidebarTinted)
+        _glassButtons = Published(initialValue: store.object(forKey: Keys.glassButtons) as? Bool ?? Defaults.glassButtons)
     }
 
     // MARK: Helpers
@@ -290,7 +300,7 @@ final class SettingsManager: ObservableObject {
             Keys.confirmStop, Keys.confirmDelete, Keys.confirmPrune, Keys.defaultShell,
             Keys.terminalFontName, Keys.terminalFontSize, Keys.forceBlackTerminal,
             Keys.customCliPath, Keys.defaultRegistry, Keys.quitBehavior,
-            Keys.hideXPCNoiseInLogs, Keys.sidebarTinted
+            Keys.hideXPCNoiseInLogs, Keys.sidebarTinted, Keys.glassButtons
         ]
         for key in allKeys { store.removeObject(forKey: key) }
 
@@ -313,6 +323,7 @@ final class SettingsManager: ObservableObject {
         quitBehavior = Defaults.quitBehavior
         hideXPCNoiseInLogs = Defaults.hideXPCNoiseInLogs
         sidebarTinted = Defaults.sidebarTinted
+        glassButtons = Defaults.glassButtons
     }
 
     /// Registers or unregisters the app as a login item via `SMAppService`.

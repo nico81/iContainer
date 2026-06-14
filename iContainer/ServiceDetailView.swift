@@ -17,20 +17,6 @@ struct ServiceDetailView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Spacer()
-                Picker("", selection: $selectedTab) {
-                    Text("Info").tag(0)
-                    Text("Stats").tag(1)
-                    Text("Logs").tag(2)
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 240)
-                Spacer()
-            }
-            .padding(.horizontal)
-            .padding(.top, 8)
-
             Group {
                 switch selectedTab {
                 case 0:
@@ -45,6 +31,19 @@ struct ServiceDetailView: View {
             }
         }
         .navigationTitle("Apple container service")
+        // Match the container detail view: the tab switcher lives in the
+        // toolbar (Liquid Glass control layer), not in the content.
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Picker("", selection: $selectedTab) {
+                    Text("Info").tag(0)
+                    Text("Stats").tag(1)
+                    Text("Logs").tag(2)
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 240)
+            }
+        }
         .task {
             await serviceManager.checkServiceStatus()
             await releaseChecker.checkForUpdateIfNeeded()

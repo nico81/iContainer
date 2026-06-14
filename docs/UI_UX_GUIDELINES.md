@@ -188,6 +188,25 @@ Keep iContainer clear, predictable, and fast for container operations, with mini
   "Build Infrastructure" section, with a one-line explanation that they
   are managed automatically. This mirrors Docker Desktop / OrbStack.
 
+## Stats charts
+- All resource charts (the per-container `Stats` tab and the service-wide
+  Stats tab) share `StatTimelineChart` — don't hand-roll a new chart.
+- Use a **fixed** time window (Activity-Monitor style): the X span stays
+  constant (5 min) and new samples enter at the right edge and scroll
+  left. Never let the span stretch to fit the data — a span that grows
+  with the data makes a few seconds of history fill the whole width and
+  misrepresents the timeline.
+- Split the line on real sampling gaps: samples more than ~10 s apart
+  (a stopped/restarted container, or the tab reopened after a pause) are
+  drawn as separate segments instead of being joined by a straight line
+  that implies data which was never measured.
+- Draw a lone/first sample as a point, so the chart shows something
+  immediately instead of an empty plot while history builds up.
+- Line plus a soft gradient area fill, both in the accent color; the CPU
+  chart is clamped to a 0–100 % Y scale.
+- A stopped container's history is cleared (not frozen), so a later
+  restart charts fresh rather than bridging the downtime with a flat line.
+
 ## Container creation
 - The create sheet offers a "Start after creation" checkbox (default
   on). On success, navigate to the newly created container.
@@ -212,9 +231,15 @@ Keep iContainer clear, predictable, and fast for container operations, with mini
 
 ## Visual Consistency
 - Reuse the shared visual tokens in `DesignSystem.swift`: `AppRadius`
-  for corner radii, `cardOutline(_:)` for the hairline outline, and
-  `StatusDot` for the running/stopped indicator. Don't hardcode radii,
-  stroke overlays, or status circles in new views.
+  for corner radii, `cardOutline(_:)` for the hairline outline,
+  `StatusDot` for the running/stopped indicator, and
+  `actionButtonStyle(prominent:glass:)` for action buttons. Don't
+  hardcode radii, stroke overlays, status circles, or `.buttonStyle`
+  in new views.
+- Liquid Glass is opt-out (`settings.glassButtons`); always provide the
+  standard bordered fallback through `actionButtonStyle`, and respect
+  Reduce Transparency for purely decorative translucency (e.g. the
+  sidebar accent wash).
 - Reuse existing component language (`DetailSection`, `DetailRow`, status badge style).
 - Keep icon semantics consistent:
   - play/start = start

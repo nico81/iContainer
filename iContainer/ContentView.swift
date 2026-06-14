@@ -87,6 +87,10 @@ struct ContentView: View {
     // Mirrors `SettingsManager.sidebarTinted` via its UserDefaults key, so
     // toggling the preference live-updates the sidebar wash in both windows.
     @AppStorage(SettingsManager.Keys.sidebarTinted) private var sidebarTinted = SettingsManager.Defaults.sidebarTinted
+    // When the user asks the system to minimise translucency, drop the
+    // accent wash: it's brand decoration on the Liquid Glass control layer,
+    // exactly what Reduce Transparency is meant to strip back.
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     // Confirmation state for Stop / Delete triggered by the Container
     // menu commands. The sidebar row owns its own equivalent dialogs for
@@ -490,7 +494,7 @@ struct ContentView: View {
         // off so everything stays interactive; `ignoresSafeArea` lets it
         // reach under the toolbar.
         .overlay {
-            if sidebarTinted {
+            if sidebarTinted && !reduceTransparency {
                 Color.accentColor
                     .opacity(0.12)
                     .allowsHitTesting(false)

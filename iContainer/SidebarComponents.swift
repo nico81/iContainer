@@ -11,6 +11,7 @@ import SwiftUI
 struct ServiceStatusView: View {
     @EnvironmentObject var serviceManager: ServiceManager
     @State private var isProcessing = false
+    @AppStorage(SettingsManager.Keys.glassButtons) private var glassButtons = SettingsManager.Defaults.glassButtons
 
     var body: some View {
         HStack(spacing: 10) {
@@ -46,7 +47,7 @@ struct ServiceStatusView: View {
                         .frame(width: 16, height: 16)
                 }
             }
-            .buttonStyle(.bordered)
+            .actionButtonStyle(glass: glassButtons)
             .controlSize(.small)
             .disabled(isProcessing)
         }
@@ -64,6 +65,7 @@ struct ContainerRowView: View {
     let onNavigateToTab: (Int) -> Void
     let onEditSettings: () -> Void
     @EnvironmentObject var containerManager: ContainerizationWrapper
+    @AppStorage(SettingsManager.Keys.glassButtons) private var glassButtons = SettingsManager.Defaults.glassButtons
     @State private var showingDeleteConfirmation = false
     @State private var showingStopConfirmation = false
     @State private var isDeleting = false
@@ -106,7 +108,7 @@ struct ContainerRowView: View {
                                     .brightness(0.15)
                                     .frame(width: 16, height: 16)
                             }
-                            .buttonStyle(.bordered)
+                            .actionButtonStyle(glass: glassButtons)
                             .controlSize(.small)
                         } else {
                             Button {
@@ -123,7 +125,7 @@ struct ContainerRowView: View {
                                     .brightness(0.05)
                                     .frame(width: 16, height: 16)
                             }
-                            .buttonStyle(.bordered)
+                            .actionButtonStyle(glass: glassButtons)
                             .controlSize(.small)
                         }
                     }

@@ -28,6 +28,28 @@ extension View {
                 .stroke(Color.hairline, lineWidth: 1)
         )
     }
+
+    /// Button style for primary/inline action buttons. When `glass` is on
+    /// (the `settings.glassButtons` preference) it uses the Liquid Glass
+    /// style; otherwise it falls back to the standard bordered style for
+    /// higher contrast and usability. `prominent` picks the emphasised
+    /// variant (used for the main call-to-action).
+    @ViewBuilder
+    func actionButtonStyle(prominent: Bool = false, glass: Bool) -> some View {
+        if glass {
+            if prominent {
+                buttonStyle(.glassProminent)
+            } else {
+                buttonStyle(.glass)
+            }
+        } else {
+            if prominent {
+                buttonStyle(.borderedProminent)
+            } else {
+                buttonStyle(.bordered)
+            }
+        }
+    }
 }
 
 /// The running/stopped indicator dot. One definition for the sidebar

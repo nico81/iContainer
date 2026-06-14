@@ -21,21 +21,6 @@ struct ContainerDetailView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Spacer()
-                Picker("", selection: $selectedTab) {
-                    Text("Info").tag(0)
-                    Text("Stats").tag(1)
-                    Text("Shell").tag(2)
-                    Text("Logs").tag(3)
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 280)
-                Spacer()
-            }
-            .padding(.horizontal)
-            .padding(.top, 8)
-
             Group {
                 switch selectedTab {
                 case 0:
@@ -72,6 +57,21 @@ struct ContainerDetailView: View {
             }
         }
         .navigationTitle(details?.name ?? "Details")
+        // Tab switcher lives in the toolbar (Liquid Glass control layer)
+        // rather than in the content, so the tab content scrolls under the
+        // glass toolbar with the native scroll-edge effect.
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Picker("", selection: $selectedTab) {
+                    Text("Info").tag(0)
+                    Text("Stats").tag(1)
+                    Text("Shell").tag(2)
+                    Text("Logs").tag(3)
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 280)
+            }
+        }
         .task(id: containerId) {
             await loadDetails()
         }

@@ -7,6 +7,26 @@ The format follows Keep a Changelog, and versions use semantic versioning:
 
 ## [Unreleased]
 
+## [1.5.3] - 2026-06-14
+
+### Added
+- "Use Liquid Glass buttons" appearance preference (General ▸
+  Appearance, default on). Action buttons use the Liquid Glass button
+  style via a new `actionButtonStyle(prominent:glass:)` modifier; turning
+  it off falls back to the standard bordered/`borderedProminent` style
+  for higher contrast. Backed by `settings.glassButtons`, read by each
+  view through `@AppStorage`.
+
+### Changed
+- The sidebar accent wash now respects the system **Reduce Transparency**
+  accessibility setting: when that is on, the tint is dropped (it's brand
+  decoration on the Liquid Glass layer, exactly what the setting strips).
+
+### Documentation
+- Documented the Stats chart conventions (shared `StatTimelineChart`,
+  fixed time window, gap splitting, single-sample point, accent fill,
+  cleared-on-stop history) in `docs/UI_UX_GUIDELINES.md`.
+
 ## [1.5.2] - 2026-06-13
 
 ### Changed
