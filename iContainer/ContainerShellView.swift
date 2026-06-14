@@ -216,7 +216,7 @@ struct ContainerShellView: View {
                             }
                             .frame(height: shellHeight)
                             .background(s.forceBlackTerminal ? Color.black : Color.clear)
-                            .clipShape(RoundedRectangle(cornerRadius: s.forceBlackTerminal ? 6 : 0))
+                            .clipShape(RoundedRectangle(cornerRadius: s.forceBlackTerminal ? AppRadius.small : 0))
                             .onChange(of: session.output) { _, _ in
                                 guard autoScroll else { return }
                                 withAnimation(.easeOut(duration: 0.15)) {

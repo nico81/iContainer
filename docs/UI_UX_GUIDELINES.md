@@ -211,6 +211,10 @@ Keep iContainer clear, predictable, and fast for container operations, with mini
   `forceBlackTerminal`).
 
 ## Visual Consistency
+- Reuse the shared visual tokens in `DesignSystem.swift`: `AppRadius`
+  for corner radii, `cardOutline(_:)` for the hairline outline, and
+  `StatusDot` for the running/stopped indicator. Don't hardcode radii,
+  stroke overlays, or status circles in new views.
 - Reuse existing component language (`DetailSection`, `DetailRow`, status badge style).
 - Keep icon semantics consistent:
   - play/start = start

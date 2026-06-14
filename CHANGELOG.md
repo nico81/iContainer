@@ -7,6 +7,20 @@ The format follows Keep a Changelog, and versions use semantic versioning:
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-06-13
+
+### Changed
+- Extracted a small design-system module (`DesignSystem.swift`) as the
+  single source of truth for visual tokens that were previously
+  duplicated with slight inconsistencies across views:
+  - `AppRadius` (`card` = 12, `small` = 8) corner radii.
+  - `Color.hairline` and a `cardOutline(_:)` view modifier replacing the
+    repeated `.overlay(RoundedRectangle(...).stroke(...))`.
+  - `StatusDot`, one definition of the running/stopped indicator dot
+    (sidebar service row, container rows, welcome dashboard), with a
+    configurable `size`.
+  No behavior change — purely visual consistency and de-duplication.
+
 ## [1.5.1] - 2026-06-13
 
 ### Added

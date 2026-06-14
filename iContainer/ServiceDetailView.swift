@@ -231,11 +231,8 @@ struct ServiceDetailView: View {
                                     .frame(width: sectionContentWidth * 0.33, alignment: .topLeading)
                                     .frame(minHeight: infoBoxHeight, alignment: .topLeading)
                                     .background(Color(nsColor: .controlBackgroundColor))
-                                    .cornerRadius(10)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 10)
-                                            .stroke(Color.gray.opacity(0.15), lineWidth: 1)
-                                    )
+                                    .cornerRadius(AppRadius.card)
+                                    .cardOutline(AppRadius.card)
                                 VStack(alignment: .leading, spacing: 12) {
                                     ChartPanel(title: "CPU % of host (\(hostCoreCount) cores)") {
                                         StatTimelineChart(
@@ -425,7 +422,7 @@ struct ServiceDetailView: View {
                             }
                             .frame(height: logAreaHeight)
                             .background(s.forceBlackTerminal ? Color.black : Color.clear)
-                            .clipShape(RoundedRectangle(cornerRadius: s.forceBlackTerminal ? 6 : 0))
+                            .clipShape(RoundedRectangle(cornerRadius: s.forceBlackTerminal ? AppRadius.small : 0))
                             .onChange(of: serviceManager.serviceLogs) { _, _ in
                                 guard serviceManager.isFollowingServiceLogs else { return }
                                 proxy.scrollTo("SERVICE_LOGS_BOTTOM", anchor: .bottom)

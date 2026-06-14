@@ -61,11 +61,8 @@ struct ContainerStatsView: View {
                                     .frame(width: sectionContentWidth * 0.33, alignment: .topLeading)
                                     .frame(minHeight: infoBoxHeight, alignment: .topLeading)
                                     .background(Color(nsColor: .controlBackgroundColor))
-                                    .cornerRadius(10)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 10)
-                                            .stroke(Color.gray.opacity(0.15), lineWidth: 1)
-                                    )
+                                    .cornerRadius(AppRadius.card)
+                                    .cardOutline(AppRadius.card)
 
                                     VStack(alignment: .leading, spacing: 12) {
                                         ChartPanel(title: "CPU %") {
@@ -310,11 +307,8 @@ struct ChartPanel<Content: View>: View {
         }
         .padding(8)
         .background(Color(nsColor: .windowBackgroundColor).opacity(0.35))
-        .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.gray.opacity(0.15), lineWidth: 1)
-        )
+        .cornerRadius(AppRadius.small)
+        .cardOutline(AppRadius.small)
     }
 }
 

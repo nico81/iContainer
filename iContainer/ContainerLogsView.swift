@@ -80,7 +80,7 @@ struct ContainerLogsView: View {
                             }
                             .frame(height: logAreaHeight)
                             .background(s.forceBlackTerminal ? Color.black : Color.clear)
-                            .clipShape(RoundedRectangle(cornerRadius: s.forceBlackTerminal ? 6 : 0))
+                            .clipShape(RoundedRectangle(cornerRadius: s.forceBlackTerminal ? AppRadius.small : 0))
                             .onChange(of: logsText) { _, _ in
                                 guard isFollowing else { return }
                                 proxy.scrollTo("BOTTOM", anchor: .bottom)

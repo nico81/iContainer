@@ -26,7 +26,7 @@ struct DependencyErrorView: View {
                 }
                 .padding()
                 .background(Color.gray.opacity(0.1))
-                .cornerRadius(8)
+                .cornerRadius(AppRadius.small)
             }
             
             VStack(spacing: 6) {

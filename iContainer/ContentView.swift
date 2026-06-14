@@ -735,7 +735,7 @@ struct ContentView: View {
         .foregroundColor(.red)
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: AppRadius.small))
     }
 
     @ViewBuilder
@@ -793,7 +793,7 @@ struct ContentView: View {
                         }
                         .frame(maxHeight: 180)
                         .background(Color(NSColor.textBackgroundColor).opacity(0.4))
-                        .cornerRadius(6)
+                        .cornerRadius(AppRadius.small)
                         .onChange(of: output) { _, _ in
                             proxy.scrollTo("buildOutputTail", anchor: .bottom)
                         }

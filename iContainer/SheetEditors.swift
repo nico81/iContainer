@@ -274,7 +274,7 @@ struct MappingRow: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: AppRadius.small))
     }
 }
 

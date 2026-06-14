@@ -14,15 +14,7 @@ struct ServiceStatusView: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Circle()
-                .fill(serviceManager.isServiceRunning ? Color.green : Color.red)
-                .brightness(serviceManager.isServiceRunning ? 0.15 : 0.05)
-                .frame(width: 14, height: 14)
-                .overlay(
-                    Circle()
-                        .stroke(Color.white.opacity(0.9), lineWidth: 1)
-                )
-                .shadow(color: Color.black.opacity(0.15), radius: 1, x: 0, y: 0)
+            StatusDot(isRunning: serviceManager.isServiceRunning, size: 14)
             VStack(alignment: .leading, spacing: 4) {
                 Text("Container service")
                     .font(.headline)
@@ -80,15 +72,7 @@ struct ContainerRowView: View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Circle()
-                        .fill(container.status == .running ? Color.green : Color.red)
-                        .brightness(container.status == .running ? 0.15 : 0.05)
-                        .frame(width: 10, height: 10)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white.opacity(0.9), lineWidth: 1)
-                        )
-                        .shadow(color: Color.black.opacity(0.15), radius: 1, x: 0, y: 0)
+                    StatusDot(isRunning: container.status == .running)
                     Text(container.name)
                         .font(.headline)
                 }

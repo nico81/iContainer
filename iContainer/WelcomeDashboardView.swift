@@ -58,10 +58,7 @@ struct WelcomeDashboardView: View {
                 Text("iContainer")
                     .font(.system(size: 34, weight: .semibold, design: .rounded))
                 HStack(spacing: 8) {
-                    Circle()
-                        .fill(isServiceRunning ? Color.green : Color.red)
-                        .brightness(isServiceRunning ? 0.15 : 0.05)
-                        .frame(width: 10, height: 10)
+                    StatusDot(isRunning: isServiceRunning)
                     Text("Apple container service")
                         .font(.callout)
                         .foregroundColor(.secondary)
@@ -98,9 +95,9 @@ struct WelcomeDashboardView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: AppRadius.small))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: AppRadius.small)
                 .stroke(Color.accentColor.opacity(0.35), lineWidth: 1)
         )
     }
@@ -152,7 +149,7 @@ struct WelcomeDashboardView: View {
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: AppRadius.small))
         } else {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Available Containers")
@@ -173,7 +170,7 @@ struct WelcomeDashboardView: View {
                         }
                     }
                 }
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: AppRadius.small))
             }
         }
     }
@@ -198,7 +195,7 @@ private struct WelcomeMetricTile: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: AppRadius.small))
     }
 }
 
@@ -207,10 +204,7 @@ private struct WelcomeContainerRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Circle()
-                .fill(container.status == .running ? Color.green : Color.red)
-                .brightness(container.status == .running ? 0.15 : 0.05)
-                .frame(width: 10, height: 10)
+            StatusDot(isRunning: container.status == .running)
             VStack(alignment: .leading, spacing: 2) {
                 Text(container.name)
                     .font(.callout.weight(.medium))

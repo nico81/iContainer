@@ -43,6 +43,11 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
   makes sheets resizable with a minimum size.
 - `iContainer/ViewExtensions.swift`: `View.applyIf` for conditional
   modifier chains.
+- `iContainer/DesignSystem.swift`: shared visual tokens — `AppRadius`
+  (`card`/`small` corner radii), `Color.hairline` + the
+  `cardOutline(_:)` modifier, and the `StatusDot` running/stopped
+  indicator. Single source of truth; reuse these instead of hardcoding
+  radii, stroke overlays, or status circles in new views.
 
 ### Service layer
 - `iContainer/ContainerizationWrapper.swift`: async wrapper around the

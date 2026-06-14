@@ -42,11 +42,8 @@ struct DetailSection<Content: View>: View {
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(nsColor: .controlBackgroundColor))
-        .cornerRadius(12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
-        )
+        .cornerRadius(AppRadius.card)
+        .cardOutline(AppRadius.card)
     }
 }
 
@@ -89,6 +86,6 @@ struct StatusBadge: View {
             .padding(.vertical, 4)
             .background(color.opacity(0.2))
             .foregroundColor(color)
-            .cornerRadius(8)
+            .cornerRadius(AppRadius.small)
     }
 }
