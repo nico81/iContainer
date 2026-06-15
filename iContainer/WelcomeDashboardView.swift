@@ -14,7 +14,6 @@ struct WelcomeDashboardView: View {
     let onSelectContainer: (Container) -> Void
 
     @EnvironmentObject private var releaseChecker: ContainerReleaseChecker
-    @AppStorage(SettingsManager.Keys.glassButtons) private var glassButtons = SettingsManager.Defaults.glassButtons
 
     private var runningContainers: [Container] {
         containers.filter { $0.status == .running }
@@ -56,8 +55,8 @@ struct WelcomeDashboardView: View {
                 .shadow(color: Color.black.opacity(0.12), radius: 8, x: 0, y: 4)
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("iContainer")
-                    .font(.system(size: 34, weight: .semibold, design: .rounded))
+                (Text("i").foregroundColor(.accentColor) + Text("Container"))
+                    .font(.system(size: 34, weight: .semibold))
                 HStack(spacing: 8) {
                     StatusDot(isRunning: isServiceRunning)
                     Text("Apple container service")
@@ -117,14 +116,14 @@ struct WelcomeDashboardView: View {
             Button(action: onCreateContainer) {
                 Label("Create Container", systemImage: "plus")
             }
-            .actionButtonStyle(prominent: true, glass: glassButtons)
+            .actionButtonStyle(prominent: true)
             .controlSize(.large)
             .disabled(!isServiceRunning)
 
             Button(action: onPullImage) {
                 Label("Pull Image", systemImage: "square.and.arrow.down")
             }
-            .actionButtonStyle(glass: glassButtons)
+            .actionButtonStyle()
             .controlSize(.large)
             .disabled(!isServiceRunning)
 
@@ -132,7 +131,7 @@ struct WelcomeDashboardView: View {
                 Button(action: onShowService) {
                     Label("Apple container service details", systemImage: "server.rack")
                 }
-                .actionButtonStyle(glass: glassButtons)
+                .actionButtonStyle()
                 .controlSize(.large)
             }
         }

@@ -29,26 +29,62 @@ extension View {
         )
     }
 
-    /// Button style for primary/inline action buttons. When `glass` is on
-    /// (the `settings.glassButtons` preference) it uses the Liquid Glass
-    /// style; otherwise it falls back to the standard bordered style for
-    /// higher contrast and usability. `prominent` picks the emphasised
-    /// variant (used for the main call-to-action).
+    /// Button style for primary/inline action buttons: the standard
+    /// bordered style. `prominent` picks the emphasised variant (used for
+    /// the main call-to-action); `circular` rounds the button into a circle
+    /// — intended for icon-only action buttons.
     @ViewBuilder
-    func actionButtonStyle(prominent: Bool = false, glass: Bool) -> some View {
-        if glass {
-            if prominent {
-                buttonStyle(.glassProminent)
-            } else {
-                buttonStyle(.glass)
-            }
+    func actionButtonStyle(prominent: Bool = false, circular: Bool = false) -> some View {
+        let shaped = buttonBorderShape(circular ? .circle : .automatic)
+        if prominent {
+            shaped.buttonStyle(.borderedProminent)
         } else {
-            if prominent {
-                buttonStyle(.borderedProminent)
-            } else {
-                buttonStyle(.bordered)
+            shaped.buttonStyle(.bordered)
+        }
+    }
+}
+
+/// The tab switcher used in the detail toolbars. A custom segmented control
+/// because the native one can't be tinted: SwiftUI's `.segmented` picker
+/// ignores `.tint` for its selection, and `NSSegmentedControl`'s
+/// `selectedSegmentBezelColor` is overridden by Liquid Glass. This renders
+/// only the segments and the accent-filled selected pill (no separators, no
+/// own track) — the single outer border is the toolbar's own glass capsule,
+/// so the bar has one outline with just the pill moving inside.
+/// `selection` is an `Int` tag matching the order of `labels`.
+struct AccentTabPicker: View {
+    @Binding var selection: Int
+    let labels: [String]
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(labels.enumerated()), id: \.offset) { index, label in
+                let isSelected = index == selection
+                Button {
+                    selection = index
+                } label: {
+                    Text(label)
+                        .font(.callout)
+                        .fontWeight(isSelected ? .semibold : .regular)
+                        .foregroundStyle(isSelected ? Color.white : Color.primary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 24)
+                        .contentShape(Capsule())
+                        .background {
+                            if isSelected {
+                                Capsule().fill(Color.accentColor)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
             }
         }
+        // Inset the segment row inside the toolbar's glass capsule so the
+        // selected pill keeps an even margin from the outer border on every
+        // side — including the first/last segment, which would otherwise
+        // touch the edge.
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
     }
 }
 

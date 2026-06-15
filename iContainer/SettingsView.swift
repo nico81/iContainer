@@ -104,7 +104,6 @@ struct SettingsView: View {
                 }
                 Toggle("Show icon in menu bar", isOn: $settings.showMenuBarIcon)
                 Toggle("Tint the sidebar with the accent color", isOn: $settings.sidebarTinted)
-                Toggle("Use Liquid Glass buttons", isOn: $settings.glassButtons)
             }
 
             groupBox("Startup") {

@@ -46,10 +46,13 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
 - `iContainer/DesignSystem.swift`: shared visual tokens — `AppRadius`
   (`card`/`small` corner radii), `Color.hairline` + the
   `cardOutline(_:)` modifier, the `StatusDot` running/stopped
-  indicator, and the `actionButtonStyle(prominent:glass:)` modifier
-  (Liquid Glass vs standard bordered, driven by `settings.glassButtons`).
-  Single source of truth; reuse these instead of hardcoding radii,
-  stroke overlays, status circles, or button styles in new views.
+  indicator, the `actionButtonStyle(prominent:circular:)` modifier
+  (standard bordered; `circular` for icon-only buttons), and
+  `AccentTabPicker` (the accent-tinted segmented control used by the
+  detail toolbars, since the native segmented picker can't be tinted
+  under Liquid Glass). Single source of truth; reuse these instead of
+  hardcoding radii, stroke overlays, status circles, button styles, or
+  tab pickers in new views.
 
 ### Service layer
 - `iContainer/ContainerizationWrapper.swift`: async wrapper around the
@@ -185,10 +188,9 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
   a non-MainActor context.
 - Preference inventory (default in parentheses):
   - **General**: theme (System), menu bar icon (on), sidebar accent
-    tint (on; auto-dropped under Reduce Transparency), Liquid Glass
-    buttons (on; off = standard bordered style), launch at login (off,
-    via `SMAppService.mainApp`), auto-start container service on app
-    open (off), quit behavior (Ask).
+    tint (on; auto-dropped under Reduce Transparency), launch at login
+    (off, via `SMAppService.mainApp`), auto-start container service on
+    app open (off), quit behavior (Ask).
   - **Notifications**: container stopped (on), action failed (on).
   - **Behavior**: refresh interval seconds (5; allowed values are
     Manual / 2 / 5 / 10), confirm Stop (on), confirm Delete (on),

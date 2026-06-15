@@ -36,7 +36,7 @@ struct ContainerStatsView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let horizontalPadding: CGFloat = 24
+            let horizontalPadding: CGFloat = 16
             let sectionInnerPadding: CGFloat = 32
             let sectionContentWidth = max(0, proxy.size.width - (horizontalPadding * 2) - sectionInnerPadding)
             let statsHeight = max(420, proxy.size.height - 180)

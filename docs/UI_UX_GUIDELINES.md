@@ -232,14 +232,17 @@ Keep iContainer clear, predictable, and fast for container operations, with mini
 ## Visual Consistency
 - Reuse the shared visual tokens in `DesignSystem.swift`: `AppRadius`
   for corner radii, `cardOutline(_:)` for the hairline outline,
-  `StatusDot` for the running/stopped indicator, and
-  `actionButtonStyle(prominent:glass:)` for action buttons. Don't
-  hardcode radii, stroke overlays, status circles, or `.buttonStyle`
-  in new views.
-- Liquid Glass is opt-out (`settings.glassButtons`); always provide the
-  standard bordered fallback through `actionButtonStyle`, and respect
-  Reduce Transparency for purely decorative translucency (e.g. the
-  sidebar accent wash).
+  `StatusDot` for the running/stopped indicator,
+  `actionButtonStyle(prominent:circular:)` for action buttons, and
+  `AccentTabPicker` for detail-toolbar tab switching. Don't hardcode
+  radii, stroke overlays, status circles, `.buttonStyle`, or native
+  segmented pickers in new views.
+- Action buttons use the standard bordered style (`circular` for
+  icon-only buttons). Keep purely decorative translucency (e.g. the
+  sidebar accent wash) gated on Reduce Transparency.
+- Detail toolbars use `AccentTabPicker` (accent-filled selected pill)
+  rather than the native `.segmented` picker, which can't be tinted
+  under Liquid Glass.
 - Reuse existing component language (`DetailSection`, `DetailRow`, status badge style).
 - Keep icon semantics consistent:
   - play/start = start

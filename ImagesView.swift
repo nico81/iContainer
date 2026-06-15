@@ -47,7 +47,6 @@ struct ImagesView: View {
 struct ImageRowView: View {
     let image: ContainerImage
     @EnvironmentObject var containerManager: ContainerizationWrapper
-    @AppStorage(SettingsManager.Keys.glassButtons) private var glassButtons = SettingsManager.Defaults.glassButtons
     @State private var showingDeleteConfirmation = false
     @State private var isDeleting = false
     @State private var rowInspectDetails: ImageInspectDetails?
@@ -74,14 +73,19 @@ struct ImageRowView: View {
                     ProgressView()
                         .scaleEffect(0.7)
                         .frame(width: 16, height: 16)
+                        .padding(3)
                 } else {
                     Image(systemName: "trash")
                         .frame(width: 16, height: 16)
+                        .padding(3)
                 }
             }
-            .actionButtonStyle(glass: glassButtons)
+            .actionButtonStyle(circular: true)
             .controlSize(.small)
             .disabled(isDeleting || containerManager.updatingImageIDs.contains(image.id))
+            // Same 60pt trailing area as the container rows' start/stop
+            // buttons, so the delete buttons line up across both lists.
+            .frame(width: 60)
         }
         .confirmationDialog("Delete Image?", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {

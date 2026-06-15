@@ -7,6 +7,25 @@ The format follows Keep a Changelog, and versions use semantic versioning:
 
 ## [Unreleased]
 
+## [1.5.4] - 2026-06-15
+
+### Added
+- `AccentTabPicker`, a custom accent-tinted segmented control used for
+  the detail toolbars (per-container Info/Stats/Shell/Logs and service
+  Info/Stats/Logs). The native segmented picker can't be tinted — SwiftUI
+  ignores `.tint` on `.segmented`, and `NSSegmentedControl`'s selection
+  color is overridden by Liquid Glass — so the selected segment is drawn
+  as an accent-filled pill inside the toolbar's own capsule.
+- `circular` option on `actionButtonStyle(...)` for icon-only action
+  buttons (start/stop, delete, service controls), rendering them as round
+  buttons.
+
+### Removed
+- The "Use Liquid Glass buttons" preference (added in 1.5.3) and its
+  `settings.glassButtons` key. Action buttons now consistently use the
+  standard bordered style; the glass toggle didn't earn its keep before
+  the public release.
+
 ## [1.5.3] - 2026-06-14
 
 ### Added

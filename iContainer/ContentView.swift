@@ -559,6 +559,9 @@ struct ContentView: View {
                 selection = .container(ContainerNavigationTarget(id: container.id, tab: 0))
             }
         )
+        // Keep the titlebar clean: the dashboard has its own "iContainer"
+        // logo + title in-content, so a titlebar title would duplicate it.
+        .navigationTitle("")
     }
 
     private var errorAlertBinding: Binding<Bool> {

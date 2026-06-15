@@ -56,20 +56,14 @@ struct ContainerDetailView: View {
                 }
             }
         }
-        .navigationTitle(details?.name ?? "Details")
-        // Tab switcher lives in the toolbar (Liquid Glass control layer)
-        // rather than in the content, so the tab content scrolls under the
-        // glass toolbar with the native scroll-edge effect.
+        // Empty navigation title: the section name shows as the large
+        // in-content header instead, so a titlebar title would just
+        // duplicate it. Tab switcher lives in the toolbar (control layer).
+        .navigationTitle("")
         .toolbar {
             ToolbarItem(placement: .principal) {
-                Picker("", selection: $selectedTab) {
-                    Text("Info").tag(0)
-                    Text("Stats").tag(1)
-                    Text("Shell").tag(2)
-                    Text("Logs").tag(3)
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 280)
+                AccentTabPicker(selection: $selectedTab, labels: ["Info", "Stats", "Shell", "Logs"])
+                    .frame(width: 320)
             }
         }
         .task(id: containerId) {

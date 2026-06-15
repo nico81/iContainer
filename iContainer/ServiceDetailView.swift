@@ -30,18 +30,14 @@ struct ServiceDetailView: View {
                 }
             }
         }
-        .navigationTitle("Apple container service")
-        // Match the container detail view: the tab switcher lives in the
-        // toolbar (Liquid Glass control layer), not in the content.
+        // Empty navigation title: the section name shows as the large
+        // in-content header instead (see `serviceHeader`), so a titlebar
+        // title would just duplicate it.
+        .navigationTitle("")
         .toolbar {
             ToolbarItem(placement: .principal) {
-                Picker("", selection: $selectedTab) {
-                    Text("Info").tag(0)
-                    Text("Stats").tag(1)
-                    Text("Logs").tag(2)
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 240)
+                AccentTabPicker(selection: $selectedTab, labels: ["Info", "Stats", "Logs"])
+                    .frame(width: 240)
             }
         }
         .task {
@@ -72,23 +68,7 @@ struct ServiceDetailView: View {
     private var serviceInfoView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                // Header
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Apple container service")
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-                        Spacer()
-                        StatusBadge(status: serviceManager.isServiceRunning ? "Running" : "Stopped")
-                    }
-                    Text(serviceManager.serviceStatus)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Text("Last check: \(lastCheckedAtText)")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-                .padding(.bottom, 8)
+                serviceHeader
                 
                 if let details = serviceManager.serviceDetails {
                     // Version Info
@@ -212,7 +192,7 @@ struct ServiceDetailView: View {
 
     private var serviceStatsView: some View {
         GeometryReader { proxy in
-            let horizontalPadding: CGFloat = 24
+            let horizontalPadding: CGFloat = 16
             let sectionInnerPadding: CGFloat = 32
             let sectionContentWidth = max(0, proxy.size.width - (horizontalPadding * 2) - sectionInnerPadding)
             let statsHeight = max(420, proxy.size.height - 180)
@@ -220,18 +200,25 @@ struct ServiceDetailView: View {
             let infoBoxHeight = max(150, chartHeight)
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    serviceStatsHeader
+                    serviceHeader
                     DetailSection(title: "Aggregate Resource Usage", icon: "speedometer") {
                         if let snapshot = statsStore.serviceHistory.latest {
                             HStack(alignment: .top, spacing: 16) {
-                                serviceStatsNumeric(snapshot)
-                                    .padding(.horizontal, 20)
-                                    .padding(.vertical, 18)
-                                    .frame(width: sectionContentWidth * 0.33, alignment: .topLeading)
-                                    .frame(minHeight: infoBoxHeight, alignment: .topLeading)
-                                    .background(Color(nsColor: .controlBackgroundColor))
-                                    .cornerRadius(AppRadius.card)
-                                    .cardOutline(AppRadius.card)
+                                VStack(alignment: .leading, spacing: 12) {
+                                    serviceStatsNumeric(snapshot)
+                                        .padding(.horizontal, 20)
+                                        .padding(.vertical, 18)
+                                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                                        .frame(minHeight: infoBoxHeight, alignment: .topLeading)
+                                        .background(Color(nsColor: .controlBackgroundColor))
+                                        .cornerRadius(AppRadius.card)
+                                        .cardOutline(AppRadius.card)
+                                    // Measurement-logic note: placed under the numbers box
+                                    // (same width) instead of at the top, so the three charts
+                                    // all fit on screen.
+                                    serviceStatsHeader
+                                }
+                                .frame(width: sectionContentWidth * 0.33, alignment: .leading)
                                 VStack(alignment: .leading, spacing: 12) {
                                     ChartPanel(title: "CPU % of host (\(hostCoreCount) cores)") {
                                         StatTimelineChart(
@@ -290,15 +277,33 @@ struct ServiceDetailView: View {
         .onDisappear { stopServiceStatsRefresh() }
     }
 
-    private var serviceStatsHeader: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Service-wide Stats")
-                .font(.largeTitle)
-                .fontWeight(.bold)
-            Text("Aggregate of every running container in the `container` service, including build workers. CPU is normalized against the host's \(hostCoreCount) cores (Activity-Monitor-style: 100% = host fully busy). Sourced from `container stats --no-stream`.")
+    /// Shared header for every service tab so the section title stays the
+    /// same across Info / Stats / Logs (matching how the container detail
+    /// shows the container name on every tab).
+    private var serviceHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Apple container service")
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                Spacer()
+                StatusBadge(status: serviceManager.isServiceRunning ? "Running" : "Stopped")
+            }
+            Text(serviceManager.serviceStatus)
                 .font(.caption)
                 .foregroundColor(.secondary)
+            Text("Last check: \(lastCheckedAtText)")
+                .font(.caption2)
+                .foregroundColor(.secondary)
         }
+        .padding(.bottom, 8)
+    }
+
+    private var serviceStatsHeader: some View {
+        Text("Aggregate of every running container in the `container` service, including build workers. CPU is normalized against the host's \(hostCoreCount) cores (Activity-Monitor-style: 100% = host fully busy). Sourced from `container stats --no-stream`.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func serviceStatsNumeric(_ snapshot: ServiceStats) -> some View {
@@ -372,6 +377,7 @@ struct ServiceDetailView: View {
         GeometryReader { proxy in
             let logAreaHeight = max(240, proxy.size.height - 220)
             VStack(alignment: .leading, spacing: 24) {
+                serviceHeader
                 DetailSection(title: "Logs", icon: "doc.plaintext") {
                     VStack(spacing: 12) {
                         HStack(spacing: 12) {
