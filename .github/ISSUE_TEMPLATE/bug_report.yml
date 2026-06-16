@@ -1,0 +1,48 @@
+name: Bug report
+description: Report something that isn't working
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. The most common cause of breakage is a
+        version mismatch with the Apple `container` CLI, so please fill in
+        the versions below — it saves a lot of back-and-forth.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+      placeholder: Steps to reproduce, expected vs. actual behavior.
+    validations:
+      required: true
+  - type: input
+    id: icontainer-version
+    attributes:
+      label: iContainer version
+      description: Shown on the dashboard header.
+      placeholder: "1.5.4 (14)"
+    validations:
+      required: true
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version
+      placeholder: "macOS 26.0"
+    validations:
+      required: true
+  - type: input
+    id: cli-version
+    attributes:
+      label: container CLI version
+      description: Output of `container --version`.
+      placeholder: "container CLI version 1.0.0 (build: release, commit: …)"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Relevant service logs (Service ▸ Logs) or screenshots, if any.
+    validations:
+      required: false
