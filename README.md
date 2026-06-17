@@ -50,19 +50,46 @@ it's coming. Ideas and PRs welcome.)
    [releases page](https://github.com/apple/container/releases) and install it,
    confirming the recommended default kernel.
 2. Download the latest iContainer build from
-   [Releases](../../releases), or build from source (see below).
+   [Releases](../../releases), or install via Homebrew (see below), or
+   build from source (see below).
 3. Start the container service from the app — everything else flows from there.
 
 If the CLI is missing, the app shows a setup screen with a download link instead of the main UI.
 
-> **Note on the first launch** — release builds are currently not notarized.
-> macOS will block the app the first time: right-click the app → **Open**, or
-> allow it under **System Settings → Privacy & Security → Open Anyway**.
+The app checks GitHub for new iContainer releases on launch (cached for one
+hour) and surfaces an in-app banner plus a one-shot popup whenever your
+running version is older than the latest published tag. You can also trigger
+a check on demand from the **iContainer ▸ Check for Updates…** menu item.
+
+> **Note on the first launch** — release builds are currently not notarized
+> (the project doesn't have a paid Apple Developer account yet). macOS will
+> block the app the first time: right-click the app → **Open**, or allow it
+> under **System Settings → Privacy & Security → Open Anyway**.
 > Alternatively, clear the quarantine flag from the terminal:
 >
 > ```sh
 > xattr -d com.apple.quarantine /Applications/iContainer.app
 > ```
+
+### Install via Homebrew
+
+A dedicated Homebrew tap is the easiest way to keep iContainer up to date
+without re-authorising the bundle on every release — Homebrew strips the
+quarantine flag automatically, which sidesteps the Gatekeeper warning above.
+
+```sh
+brew tap nico81/icontainer
+brew install --cask icontainer
+
+# Later, to upgrade to the newest release:
+brew upgrade --cask icontainer
+```
+
+The tap lives at
+[nico81/homebrew-icontainer](https://github.com/nico81/homebrew-icontainer);
+the canonical copy of the cask formula is vendored here as
+[`Casks/icontainer.rb`](Casks/icontainer.rb) and mirrored to the tap on
+each release.
 
 ## Building from source
 

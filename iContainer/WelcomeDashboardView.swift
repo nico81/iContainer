@@ -14,6 +14,8 @@ struct WelcomeDashboardView: View {
     let onSelectContainer: (Container) -> Void
 
     @EnvironmentObject private var releaseChecker: ContainerReleaseChecker
+    @EnvironmentObject private var appReleaseChecker: AppReleaseChecker
+    @State private var showingAppReleaseNotes: Bool = false
 
     private var runningContainers: [Container] {
         containers.filter { $0.status == .running }
@@ -31,6 +33,9 @@ struct WelcomeDashboardView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 header
+                if appReleaseChecker.isUpdateAvailable {
+                    appUpdateAvailableBanner
+                }
                 if releaseChecker.isUpdateAvailable {
                     updateAvailableBanner
                 }
@@ -44,6 +49,15 @@ struct WelcomeDashboardView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
+        .sheet(isPresented: $showingAppReleaseNotes) {
+            ReleaseNotesSheet(
+                title: appReleaseChecker.latestReleaseName ?? "What's new in iContainer",
+                version: appReleaseChecker.latestVersion,
+                notes: appReleaseChecker.latestReleaseNotes,
+                downloadURL: appReleaseChecker.latestReleaseURL ?? AppReleaseChecker.releasesPageURL,
+                onClose: { showingAppReleaseNotes = false }
+            )
+        }
     }
 
     private var header: some View {
@@ -69,6 +83,42 @@ struct WelcomeDashboardView: View {
                     .textSelection(.enabled)
             }
         }
+    }
+
+    private var appUpdateAvailableBanner: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "sparkles")
+                .font(.title2)
+                .foregroundColor(.accentColor)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("A new version of iContainer is available")
+                    .font(.subheadline.weight(.semibold))
+                if let latest = appReleaseChecker.latestVersion {
+                    Text("Installed v\(appReleaseChecker.installedVersion) · Latest v\(latest)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                HStack(spacing: 12) {
+                    Link(
+                        "Download latest release",
+                        destination: appReleaseChecker.latestReleaseURL ?? AppReleaseChecker.releasesPageURL
+                    )
+                    Button("What's new") {
+                        showingAppReleaseNotes = true
+                    }
+                    .buttonStyle(.link)
+                }
+                .font(.caption)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: AppRadius.small))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppRadius.small)
+                .stroke(Color.accentColor.opacity(0.35), lineWidth: 1)
+        )
     }
 
     private var updateAvailableBanner: some View {

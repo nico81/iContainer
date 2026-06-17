@@ -7,6 +7,28 @@ The format follows Keep a Changelog, and versions use semantic versioning:
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-06-16
+
+### Added
+- `AppReleaseChecker`, a sibling of `ContainerReleaseChecker` that polls
+  `https://api.github.com/repos/nico81/iContainer/releases/latest` (cached
+  for one hour) and compares the running bundle's
+  `CFBundleShortVersionString` against the latest published GitHub tag.
+- In-app update notice for iContainer itself: a banner in
+  `WelcomeDashboardView` and a one-shot per-version alert in `ContentView`,
+  mirroring the existing CLI update flow. **iContainer ▸ Check for
+  Updates…** menu item triggers an on-demand check and shows an
+  "up to date" confirmation when no newer release is found.
+- `ReleaseNotesSheet`, a modal sheet that renders the GitHub release
+  `body` as markdown. Reachable from a "What's new" link in the update
+  banner and a "Release Notes" button added to the iContainer update
+  alert; the sheet exposes the same Download action.
+- `Casks/icontainer.rb` Homebrew Cask formula plus the
+  [`nico81/homebrew-icontainer`](https://github.com/nico81/homebrew-icontainer)
+  tap, documented in the README. Homebrew strips the quarantine flag
+  automatically, which works around the Gatekeeper warning the
+  ad-hoc-signed bundle would otherwise trigger on first launch.
+
 ## [1.5.4] - 2026-06-15
 
 ### Added

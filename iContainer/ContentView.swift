@@ -32,6 +32,7 @@ struct ContentView: View {
     @EnvironmentObject var serviceManager: ServiceManager
     @EnvironmentObject var appNavigation: AppNavigation
     @EnvironmentObject var releaseChecker: ContainerReleaseChecker
+    @EnvironmentObject var appReleaseChecker: AppReleaseChecker
     @Environment(\.openWindow) private var openWindow
     @State private var showingCreateContainerSheet = false
     @State private var createImageSource: CreateImageSource = .image
@@ -98,6 +99,7 @@ struct ContentView: View {
     // shortcuts so the experience matches the inline UI.
     @State private var commandStopTarget: Container?
     @State private var commandDeleteTarget: Container?
+    @State private var showingAppReleaseNotes: Bool = false
 
     /// Containers filtered by the sidebar search query (case-insensitive match
     /// on name and image reference) and the status filter selected from the
@@ -148,6 +150,34 @@ struct ContentView: View {
             let latest = releaseChecker.latestVersion ?? "?"
             let installed = releaseChecker.installedVersion ?? "?"
             Text("A newer version of the Apple container service is available.\nInstalled v\(installed) · Latest v\(latest)")
+        }
+        .alert(
+            "iContainer update available",
+            isPresented: $appReleaseChecker.shouldPresentUpdateAlert
+        ) {
+            Button("Download") {
+                let url = appReleaseChecker.latestReleaseURL ?? AppReleaseChecker.releasesPageURL
+                NSWorkspace.shared.open(url)
+            }
+            Button("Release Notes") {
+                // Dispatched so the alert finishes dismissing before the
+                // sheet tries to present — SwiftUI dislikes back-to-back
+                // modal transitions in the same run-loop pass.
+                DispatchQueue.main.async { showingAppReleaseNotes = true }
+            }
+            Button("Later", role: .cancel) { }
+        } message: {
+            let latest = appReleaseChecker.latestVersion ?? "?"
+            Text("A newer version of iContainer is available.\nInstalled v\(appReleaseChecker.installedVersion) · Latest v\(latest)")
+        }
+        .sheet(isPresented: $showingAppReleaseNotes) {
+            ReleaseNotesSheet(
+                title: appReleaseChecker.latestReleaseName ?? "What's new in iContainer",
+                version: appReleaseChecker.latestVersion,
+                notes: appReleaseChecker.latestReleaseNotes,
+                downloadURL: appReleaseChecker.latestReleaseURL ?? AppReleaseChecker.releasesPageURL,
+                onClose: { showingAppReleaseNotes = false }
+            )
         }
     }
 
@@ -224,6 +254,9 @@ struct ContentView: View {
         }
         .task {
             await releaseChecker.checkForUpdateIfNeeded()
+        }
+        .task {
+            await appReleaseChecker.checkForUpdateIfNeeded()
         }
         // Mirror the sidebar selection into AppNavigation so the
         // App-scope command menu can enable/disable items based on
@@ -1396,5 +1429,6 @@ struct ContentView_Previews: PreviewProvider {
             .environmentObject(ServiceManager())
             .environmentObject(AppNavigation())
             .environmentObject(ContainerReleaseChecker())
+            .environmentObject(AppReleaseChecker())
     }
 }

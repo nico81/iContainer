@@ -144,6 +144,14 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
   installed CLI is older than the latest published release; surfaces
   a popup (one per detected version per session) and inline banners
   on the welcome dashboard and Service Info tab.
+- `iContainer/AppReleaseChecker.swift`: the same pattern applied to
+  iContainer itself — polls `nico81/iContainer` releases, compares the
+  running bundle's `CFBundleShortVersionString` to the latest tag, and
+  drives the welcome-dashboard banner, the one-shot update alert, and
+  the on-demand **iContainer ▸ Check for Updates…** menu item.
+- `iContainer/ReleaseNotesSheet.swift`: modal sheet that renders a
+  GitHub release `body` as markdown, with a Download action. Shown from
+  the app update banner ("What's new") and the update alert.
 
 ### Tests
 - `iContainerTests/CLIParsers*Tests.swift`: ~45 XCTest cases that cover
@@ -319,6 +327,11 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
     documents the first-launch Gatekeeper bypass. When a Developer ID
     certificate is available, set `SIGN_IDENTITY` and add a
     `notarytool` step.
+  - Per release: build the zip, create the GitHub release with it,
+    then update `Casks/icontainer.rb` (`version` + `sha256` of the zip)
+    and mirror it to the `nico81/homebrew-icontainer` tap. Homebrew
+    strips the quarantine flag, so cask installs avoid the Gatekeeper
+    prompt. `Casks/icontainer.rb` here is the canonical copy.
 
 ## Parsing Layer
 - All parsing of `container` CLI output lives in `CLIParsers.swift` and

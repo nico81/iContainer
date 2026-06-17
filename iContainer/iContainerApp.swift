@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AppKit
 
 @main
 struct iContainerApp: App {
@@ -14,6 +15,7 @@ struct iContainerApp: App {
     @StateObject private var serviceManager = ServiceManager()
     @StateObject private var appNavigation = AppNavigation()
     @StateObject private var releaseChecker = ContainerReleaseChecker()
+    @StateObject private var appReleaseChecker = AppReleaseChecker()
 
     // Scene-level prefs use `@AppStorage` (SwiftUI-safe) directly on
     // the UserDefaults keys that `SettingsManager` writes to. This
@@ -48,6 +50,7 @@ struct iContainerApp: App {
                 .environmentObject(serviceManager)
                 .environmentObject(appNavigation)
                 .environmentObject(releaseChecker)
+                .environmentObject(appReleaseChecker)
                 .preferredColorScheme(themeColorScheme)
                 .onAppear {
                     appQuitDelegate.serviceManager = serviceManager
@@ -112,6 +115,28 @@ struct iContainerApp: App {
                 appNavigation.requestSettings()
             }
             .keyboardShortcut(",", modifiers: .command)
+        }
+
+        // App ▸ Check for Updates… — sits in the standard "appInfo" group
+        // so it shows up right under the "About iContainer" item, matching
+        // the placement users expect from native macOS apps.
+        CommandGroup(after: .appInfo) {
+            Button {
+                Task {
+                    await appReleaseChecker.checkForUpdateIfNeeded(force: true)
+                    if appReleaseChecker.isUpdateAvailable {
+                        appReleaseChecker.presentUpdateAlertIfAvailable()
+                    } else {
+                        let alert = NSAlert()
+                        alert.messageText = "You're up to date"
+                        alert.informativeText = "iContainer v\(appReleaseChecker.installedVersion) is the latest version."
+                        alert.alertStyle = .informational
+                        alert.runModal()
+                    }
+                }
+            } label: {
+                Label("Check for Updates…", systemImage: "arrow.down.circle")
+            }
         }
 
         // File ▸ New / Pull — replaces the default "New Item" group.
