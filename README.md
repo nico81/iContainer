@@ -85,6 +85,11 @@ brew install --cask icontainer
 brew upgrade --cask icontainer
 ```
 
+> Recent Homebrew versions ask you to trust casks from third-party taps. If
+> the install stops with *"Refusing to load cask … from untrusted tap"*, run
+> `brew trust nico81/icontainer` (as the error suggests) and re-run the
+> install.
+
 The tap lives at
 [nico81/homebrew-icontainer](https://github.com/nico81/homebrew-icontainer);
 the canonical copy of the cask formula is vendored here as
