@@ -312,6 +312,67 @@ nonisolated enum CLIParsers {
         return "Showing the latest \(maxLines) of \(lines.count) log lines.\n\n\(visibleLines)"
     }
 
+    // MARK: - Machines
+
+    /// Parses `container machine list --format json` into `[Machine]`.
+    /// Returns an empty array on malformed input.
+    static func parseMachineList(_ output: String) -> [Machine] {
+        guard let data = output.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data, options: []),
+              let array = json as? [[String: Any]] else {
+            return []
+        }
+        return array.compactMap { mapMachine($0) }
+    }
+
+    private static func mapMachine(_ dict: [String: Any]) -> Machine? {
+        guard let id = stringValue(dict, keys: ["id", "name"]), !id.isEmpty else { return nil }
+        return Machine(
+            id: id,
+            status: MachineStatus(cliValue: stringValue(dict, keys: ["status", "state"])),
+            cpus: intValueInt(dict, keys: ["cpus"]),
+            memoryBytes: intValue(dict, keys: ["memory", "memoryInBytes"]),
+            diskBytes: intValue(dict, keys: ["diskSize", "disk"]),
+            isDefault: boolValue(dict, keys: ["default", "isDefault"]) ?? false,
+            createdDate: stringValue(dict, keys: ["createdDate", "creationDate", "created"])
+        )
+    }
+
+    /// Parses `container machine inspect <id>` (an array with one element, or a
+    /// bare object) into `MachineDetails`. Returns nil on malformed input.
+    static func parseMachineDetails(_ output: String) -> MachineDetails? {
+        guard let data = output.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data, options: []) else {
+            return nil
+        }
+        let dict: [String: Any]
+        if let array = json as? [[String: Any]], let first = array.first {
+            dict = first
+        } else if let object = json as? [String: Any] {
+            dict = object
+        } else {
+            return nil
+        }
+        guard let id = stringValue(dict, keys: ["id", "name"]), !id.isEmpty else { return nil }
+        let image = dict["image"] as? [String: Any]
+        let platform = dict["platform"] as? [String: Any]
+        let userSetup = dict["userSetup"] as? [String: Any]
+        return MachineDetails(
+            id: id,
+            status: MachineStatus(cliValue: stringValue(dict, keys: ["status", "state"])),
+            cpus: intValueInt(dict, keys: ["cpus"]),
+            memoryBytes: intValue(dict, keys: ["memory", "memoryInBytes"]),
+            diskBytes: intValue(dict, keys: ["diskSize", "disk"]),
+            homeMount: stringValue(dict, keys: ["homeMount", "home-mount"]),
+            imageReference: stringValue(image ?? [:], keys: ["reference"]),
+            os: stringValue(platform ?? [:], keys: ["os"]),
+            architecture: stringValue(platform ?? [:], keys: ["architecture"]),
+            createdDate: stringValue(dict, keys: ["createdDate", "creationDate", "created"]),
+            username: stringValue(userSetup ?? [:], keys: ["username"]),
+            isDefault: boolValue(dict, keys: ["default", "isDefault"]) ?? false
+        )
+    }
+
     // MARK: - Helpers
 
     private static func keyValuePair(from line: String) -> (key: String, value: String)? {
@@ -418,5 +479,17 @@ nonisolated enum CLIParsers {
             }
         }
         return []
+    }
+
+    private static func boolValue(_ dict: [String: Any], keys: [String]) -> Bool? {
+        for key in keys {
+            if let value = dict[key] as? Bool {
+                return value
+            }
+            if let value = dict[key] as? NSNumber {
+                return value.boolValue
+            }
+        }
+        return nil
     }
 }
