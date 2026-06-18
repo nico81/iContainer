@@ -7,9 +7,15 @@ struct ContainerNavigationTarget: Hashable {
     let tab: Int
 }
 
+struct MachineNavigationTarget: Hashable {
+    let id: String
+    let tab: Int
+}
+
 enum SidebarSelection: Hashable {
     case service
     case container(ContainerNavigationTarget)
+    case machine(MachineNavigationTarget)
 }
 
 private enum CreateImageSource: String, CaseIterable, Identifiable {
@@ -57,6 +63,8 @@ struct ContentView: View {
     @State private var shouldOpenRegistryLoginAfterCreateSheet = false
     @State private var isContainersExpanded = true
     @State private var isImagesExpanded = true
+    @State private var isMachinesExpanded = true
+    @State private var showingCreateMachineSheet = false
     @State private var showingPullImageAlert = false
     @State private var pullImageReference = ""
     @State private var isPullingImage = false
@@ -129,6 +137,16 @@ struct ContentView: View {
         }
     }
 
+    /// Machines filtered by the sidebar search query (case-insensitive match
+    /// on the machine name). An empty query returns all machines.
+    private var filteredMachines: [Machine] {
+        let query = sidebarSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return containerManager.machines }
+        return containerManager.machines.filter { machine in
+            machine.id.localizedCaseInsensitiveContains(query)
+        }
+    }
+
     var body: some View {
         Group {
             if !containerManager.missingDependencies.isEmpty {
@@ -195,6 +213,15 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingEditContainerSheet) {
             editContainerSheet
+        }
+        .sheet(isPresented: $showingCreateMachineSheet) {
+            CreateMachineSheet(
+                onCreated: { name in
+                    showingCreateMachineSheet = false
+                    selection = .machine(MachineNavigationTarget(id: name, tab: 0))
+                },
+                onClose: { showingCreateMachineSheet = false }
+            )
         }
         .alert("Pull Image", isPresented: $showingPullImageAlert) {
             TextField("repository:tag", text: $pullImageReference)
@@ -301,6 +328,13 @@ struct ContentView: View {
             // error for a container that no longer exists.
             guard case .container(let target) = selection else { return }
             if !newContainers.contains(where: { $0.id == target.id }) {
+                selection = nil
+            }
+        }
+        .onChange(of: containerManager.machines) { _, newMachines in
+            // Same fallback for a machine deleted while it was selected.
+            guard case .machine(let target) = selection else { return }
+            if !newMachines.contains(where: { $0.id == target.id }) {
                 selection = nil
             }
         }
@@ -501,6 +535,38 @@ struct ContentView: View {
                     }
                 }
             }
+            Section {
+                DisclosureGroup(isExpanded: $isMachinesExpanded) {
+                    if serviceManager.isServiceRunning {
+                        ForEach(filteredMachines) { machine in
+                            NavigationLink(value: SidebarSelection.machine(MachineNavigationTarget(id: machine.id, tab: 0))) {
+                                MachineRowView(machine: machine)
+                            }
+                        }
+                        if filteredMachines.isEmpty && !sidebarSearchQuery.isEmpty {
+                            Text("No matching machines")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    } else {
+                        EmptyView()
+                    }
+                } label: {
+                    HStack {
+                        Text("Machines")
+                        Spacer()
+                        if serviceManager.isServiceRunning {
+                            Button {
+                                showingCreateMachineSheet = true
+                            } label: {
+                                Image(systemName: "plus")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Create machine")
+                        }
+                    }
+                }
+            }
         }
         .listStyle(.sidebar)
         .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 420)
@@ -565,6 +631,9 @@ struct ContentView: View {
             ServiceDetailView()
         case .container(let target):
             ContainerDetailView(containerId: target.id, initialTab: target.tab)
+                .id(target)
+        case .machine(let target):
+            MachineDetailView(machineId: target.id, initialTab: target.tab)
                 .id(target)
         default:
             welcomeDashboard

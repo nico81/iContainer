@@ -940,8 +940,15 @@ class ContainerizationWrapper: ObservableObject {
     }
 
     /// Boots a stopped machine. There is no `machine start`; `machine run -d`
-    /// boots the machine and detaches, leaving it running.
+    /// boots the machine and detaches, leaving it running. Only one machine
+    /// can run at a time, so we surface a clear, non-destructive error when
+    /// another is already running instead of letting the CLI fail with a
+    /// cryptic "Operation not supported by device".
     func startMachine(machineId: String) async {
+        if let running = machines.first(where: { $0.status == .running && $0.id != machineId }) {
+            lastErrorMessage = "Can't start \"\(machineId)\": machine \"\(running.id)\" is already running. Only one machine can run at a time — stop it first."
+            return
+        }
         updatingMachineIDs.insert(machineId)
         do {
             _ = try await runCommand(["machine", "run", "-n", machineId, "-d", "/bin/true"])
