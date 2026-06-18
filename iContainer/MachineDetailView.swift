@@ -24,6 +24,8 @@ struct MachineDetailView: View {
             Group {
                 switch selectedTab {
                 case 1:
+                    MachineShellView(machineId: machineId)
+                case 2:
                     MachineLogsView(machineId: machineId)
                 default:
                     infoTab
@@ -33,8 +35,8 @@ struct MachineDetailView: View {
         .navigationTitle("")
         .toolbar {
             ToolbarItem(placement: .principal) {
-                AccentTabPicker(selection: $selectedTab, labels: ["Info", "Logs"])
-                    .frame(width: 200)
+                AccentTabPicker(selection: $selectedTab, labels: ["Info", "Run", "Logs"])
+                    .frame(width: 260)
             }
         }
         .task(id: machineId) { await loadDetails() }
