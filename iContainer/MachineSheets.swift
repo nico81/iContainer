@@ -15,10 +15,20 @@ struct CreateMachineSheet: View {
     @State private var cpus = ""
     @State private var memory = ""
     @State private var homeMount = "rw"
-    @State private var setDefault = false
     @State private var bootAfterCreate = true
     @State private var isCreating = false
     @State private var errorMessage: String?
+
+    /// Machine names must start/end with a lowercase letter or digit and
+    /// contain only lowercase letters, digits, and hyphens (CLI rule). An
+    /// empty name is valid — the CLI assigns one.
+    private var isNameValid: Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return true }
+        let allowed = Set("abcdefghijklmnopqrstuvwxyz0123456789-")
+        guard trimmed.allSatisfy({ allowed.contains($0) }) else { return false }
+        return trimmed.first != "-" && trimmed.last != "-"
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -28,6 +38,11 @@ struct CreateMachineSheet: View {
                 .textFieldStyle(.roundedBorder)
             TextField("Name (optional)", text: $name)
                 .textFieldStyle(.roundedBorder)
+            if !isNameValid {
+                Text("Name must use only lowercase letters, digits, and hyphens, starting and ending with a letter or digit.")
+                    .font(.caption)
+                    .foregroundColor(.red)
+            }
 
             HStack(spacing: 10) {
                 TextField("CPUs (optional)", text: $cpus)
@@ -47,7 +62,6 @@ struct CreateMachineSheet: View {
                 .frame(width: 200)
             }
 
-            Toggle("Set as default machine", isOn: $setDefault)
             Toggle("Boot after creation", isOn: $bootAfterCreate)
 
             if let errorMessage {
@@ -60,7 +74,7 @@ struct CreateMachineSheet: View {
             HStack {
                 Button("Create") { runCreate() }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(isCreating || image.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(isCreating || image.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !isNameValid)
                 if isCreating { ProgressView().scaleEffect(0.8) }
                 Spacer()
                 Button("Close") { onClose() }
@@ -86,7 +100,7 @@ struct CreateMachineSheet: View {
                 cpus: cpus,
                 memory: memory,
                 homeMount: homeMount,
-                setDefault: setDefault,
+                setDefault: false,
                 boot: bootAfterCreate
             )
             isCreating = false
@@ -104,7 +118,6 @@ struct CreateMachineSheet: View {
 /// after the machine is restarted (per the CLI).
 struct EditMachineConfigSheet: View {
     let machineId: String
-    let details: MachineDetails?
     @EnvironmentObject var containerManager: ContainerizationWrapper
     @Environment(\.dismiss) private var dismiss
 
@@ -150,8 +163,8 @@ struct EditMachineConfigSheet: View {
         }
         .padding()
         .frame(minWidth: 460, minHeight: 220)
-        .onAppear {
-            if let details {
+        .task {
+            if let details = await containerManager.inspectMachine(machineId: machineId) {
                 cpus = details.cpus.map(String.init) ?? ""
                 homeMount = details.homeMount ?? "rw"
             }

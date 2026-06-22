@@ -59,6 +59,44 @@ struct MenuBarContainersView: View {
 
             Divider()
 
+            if containerManager.machines.isEmpty {
+                Text("No machines")
+            } else {
+                ForEach(containerManager.machines) { machine in
+                    Menu {
+                        MachineActionsMenuItems(
+                            machine: machine,
+                            onNavigateToTab: { tab in
+                                showMachine(machine, tab: tab)
+                            },
+                            onEditConfig: {
+                                editMachine(machine)
+                            },
+                            onRequestStop: {
+                                Task {
+                                    await containerManager.stopMachine(machineId: machine.id)
+                                    await refreshMenuState()
+                                }
+                            },
+                            onDelete: {
+                                Task {
+                                    await containerManager.deleteMachine(machineId: machine.id)
+                                    await refreshMenuState()
+                                }
+                            }
+                        )
+                    } label: {
+                        Label {
+                            Text(machine.name)
+                        } icon: {
+                            Image(nsImage: MenuBarImages.statusDot(isRunning: machine.status == .running))
+                        }
+                    }
+                }
+            }
+
+            Divider()
+
             Button {
                 openSettingsWindow()
             } label: {
@@ -117,6 +155,16 @@ struct MenuBarContainersView: View {
         appNavigation.editContainer(id: container.id)
     }
 
+    private func showMachine(_ machine: Machine, tab: Int) {
+        openMainWindow()
+        appNavigation.showMachine(id: machine.id, tab: tab)
+    }
+
+    private func editMachine(_ machine: Machine) {
+        openMainWindow()
+        appNavigation.editMachine(id: machine.id)
+    }
+
     private func showServiceDetails() {
         openMainWindow()
         appNavigation.showService()
@@ -139,6 +187,7 @@ struct MenuBarContainersView: View {
     private func refreshMenuState() async {
         await serviceManager.checkServiceStatus()
         await containerManager.refreshContainers()
+        await containerManager.refreshMachines()
     }
 
     private func openMainWindow() {

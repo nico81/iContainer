@@ -27,6 +27,8 @@ struct ContainerCommandRequest: Equatable {
 final class AppNavigation: ObservableObject {
     @Published var containerTarget: ContainerNavigationTarget?
     @Published var editContainerId: String?
+    @Published var machineTarget: MachineNavigationTarget?
+    @Published var editMachineId: String?
     @Published var serviceRequestID = 0
 
     // Intents fired by menu items / keyboard shortcuts in the App scene.
@@ -55,6 +57,16 @@ final class AppNavigation: ObservableObject {
 
     func editContainer(id: String) {
         editContainerId = id
+        activateApp()
+    }
+
+    func showMachine(id: String, tab: Int) {
+        machineTarget = MachineNavigationTarget(id: id, tab: tab)
+        activateApp()
+    }
+
+    func editMachine(id: String) {
+        editMachineId = id
         activateApp()
     }
 

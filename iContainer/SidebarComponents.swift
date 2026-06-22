@@ -196,8 +196,11 @@ struct ContainerRowView: View {
 /// set-default / delete.
 struct MachineRowView: View {
     let machine: Machine
+    let onNavigateToTab: (Int) -> Void
+    let onEditConfig: () -> Void
     @EnvironmentObject var containerManager: ContainerizationWrapper
     @State private var showingDeleteConfirmation = false
+    @State private var showingStopConfirmation = false
 
     private var isBusy: Bool {
         containerManager.updatingMachineIDs.contains(machine.id)
@@ -255,24 +258,25 @@ struct MachineRowView: View {
         }
         .padding(.vertical, 4)
         .contextMenu {
-            if machine.status == .running {
-                Button("Stop") { Task { await containerManager.stopMachine(machineId: machine.id) } }
-            } else {
-                Button("Start") { Task { await containerManager.startMachine(machineId: machine.id) } }
-            }
-            if !machine.isDefault {
-                Button("Set as Default") {
-                    Task { await containerManager.setDefaultMachine(machineId: machine.id) }
+            MachineActionsMenuItems(
+                machine: machine,
+                onNavigateToTab: onNavigateToTab,
+                onEditConfig: onEditConfig,
+                onRequestStop: {
+                    if SettingsManager.shared.confirmStop {
+                        showingStopConfirmation = true
+                    } else {
+                        Task { await containerManager.stopMachine(machineId: machine.id) }
+                    }
+                },
+                onDelete: {
+                    if SettingsManager.shared.confirmDelete {
+                        showingDeleteConfirmation = true
+                    } else {
+                        Task { await containerManager.deleteMachine(machineId: machine.id) }
+                    }
                 }
-            }
-            Divider()
-            Button("Delete", role: .destructive) {
-                if SettingsManager.shared.confirmDelete {
-                    showingDeleteConfirmation = true
-                } else {
-                    Task { await containerManager.deleteMachine(machineId: machine.id) }
-                }
-            }
+            )
         }
         .confirmationDialog("Delete Machine?", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
@@ -281,6 +285,16 @@ struct MachineRowView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Are you sure you want to delete the machine \"\(machine.name)\"? This action cannot be undone.")
+        }
+        .alert(isPresented: $showingStopConfirmation) {
+            Alert(
+                title: Text("Stop Machine?"),
+                message: Text("Are you sure you want to stop the machine \"\(machine.name)\"?"),
+                primaryButton: .destructive(Text("Stop")) {
+                    Task { await containerManager.stopMachine(machineId: machine.id) }
+                },
+                secondaryButton: .cancel()
+            )
         }
     }
 

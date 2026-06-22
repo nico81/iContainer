@@ -65,6 +65,8 @@ struct ContentView: View {
     @State private var isImagesExpanded = true
     @State private var isMachinesExpanded = true
     @State private var showingCreateMachineSheet = false
+    @State private var showingEditMachineSheet = false
+    @State private var editingMachineId: String?
     @State private var showingPullImageAlert = false
     @State private var pullImageReference = ""
     @State private var isPullingImage = false
@@ -223,6 +225,11 @@ struct ContentView: View {
                 onClose: { showingCreateMachineSheet = false }
             )
         }
+        .sheet(isPresented: $showingEditMachineSheet) {
+            if let machineId = editingMachineId {
+                EditMachineConfigSheet(machineId: machineId)
+            }
+        }
         .alert("Pull Image", isPresented: $showingPullImageAlert) {
             TextField("repository:tag", text: $pullImageReference)
             Button("Pull") {
@@ -247,6 +254,13 @@ struct ContentView: View {
         }
         .onReceive(appNavigation.$containerTarget.compactMap { $0 }) { target in
             selection = .container(target)
+        }
+        .onReceive(appNavigation.$machineTarget.compactMap { $0 }) { target in
+            selection = .machine(target)
+        }
+        .onReceive(appNavigation.$editMachineId.compactMap { $0 }) { machineId in
+            openEditMachineSheet(machineId: machineId)
+            appNavigation.editMachineId = nil
         }
         .onChange(of: showingCreateContainerSheet) { isPresented in
             guard !isPresented else { return }
@@ -540,7 +554,15 @@ struct ContentView: View {
                     if serviceManager.isServiceRunning {
                         ForEach(filteredMachines) { machine in
                             NavigationLink(value: SidebarSelection.machine(MachineNavigationTarget(id: machine.id, tab: 0))) {
-                                MachineRowView(machine: machine)
+                                MachineRowView(
+                                    machine: machine,
+                                    onNavigateToTab: { tab in
+                                        selection = .machine(MachineNavigationTarget(id: machine.id, tab: tab))
+                                    },
+                                    onEditConfig: {
+                                        openEditMachineSheet(machineId: machine.id)
+                                    }
+                                )
                             }
                         }
                         if filteredMachines.isEmpty && !sidebarSearchQuery.isEmpty {
@@ -1139,6 +1161,11 @@ struct ContentView: View {
                 }
             }
         }
+    }
+
+    private func openEditMachineSheet(machineId: String) {
+        editingMachineId = machineId
+        showingEditMachineSheet = true
     }
 
     private func openEditContainerSheet(containerId: String) {

@@ -994,18 +994,6 @@ class ContainerizationWrapper: ObservableObject {
         updatingMachineIDs.remove(machineId)
     }
 
-    func setDefaultMachine(machineId: String) async {
-        updatingMachineIDs.insert(machineId)
-        do {
-            _ = try await runCommand(["machine", "set-default", machineId])
-            await refreshMachines()
-        } catch {
-            logger.error("Failed to set default machine: \(error)")
-            lastErrorMessage = error.localizedDescription
-        }
-        updatingMachineIDs.remove(machineId)
-    }
-
     /// Applies configuration changes (cpus / memory / home-mount). Each takes
     /// effect after the machine is restarted.
     func setMachineConfig(machineId: String, cpus: String?, memory: String?, homeMount: String?) async -> Bool {

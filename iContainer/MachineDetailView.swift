@@ -7,10 +7,10 @@ struct MachineDetailView: View {
     let machineId: String
     let initialTab: Int
     @EnvironmentObject var containerManager: ContainerizationWrapper
+    @EnvironmentObject var appNavigation: AppNavigation
     @State private var details: MachineDetails?
     @State private var isLoading = true
     @State private var selectedTab: Int
-    @State private var showingEditSheet = false
     @State private var showingDeleteConfirmation = false
 
     init(machineId: String, initialTab: Int = 0) {
@@ -42,9 +42,6 @@ struct MachineDetailView: View {
         .task(id: machineId) { await loadDetails() }
         .onChange(of: containerManager.machines) { _, _ in
             Task { await loadDetails() }
-        }
-        .sheet(isPresented: $showingEditSheet) {
-            EditMachineConfigSheet(machineId: machineId, details: details)
         }
         .confirmationDialog(
             "Delete Machine?",
@@ -131,15 +128,7 @@ struct MachineDetailView: View {
                 .actionButtonStyle(prominent: true)
             }
 
-            if !(details?.isDefault ?? false) {
-                Button { Task { await containerManager.setDefaultMachine(machineId: machineId) } } label: {
-                    Label("Set as Default", systemImage: "star")
-                }
-                .actionButtonStyle()
-                .disabled(isBusy)
-            }
-
-            Button { showingEditSheet = true } label: {
+            Button { appNavigation.editMachine(id: machineId) } label: {
                 Label("Edit Configuration", systemImage: "slider.horizontal.3")
             }
             .actionButtonStyle()
