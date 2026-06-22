@@ -175,7 +175,7 @@ struct MachineShellView: View {
         GeometryReader { proxy in
             let shellHeight = max(280, proxy.size.height - 180)
             VStack(alignment: .leading, spacing: 16) {
-                DetailSection(title: "Run", icon: "terminal") {
+                DetailSection(title: "Shell", icon: "terminal") {
                     VStack(spacing: 12) {
                         HStack(spacing: 12) {
                             Toggle("Auto Scroll", isOn: $autoScroll)

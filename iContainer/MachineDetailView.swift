@@ -35,7 +35,7 @@ struct MachineDetailView: View {
         .navigationTitle("")
         .toolbar {
             ToolbarItem(placement: .principal) {
-                AccentTabPicker(selection: $selectedTab, labels: ["Info", "Run", "Logs"])
+                AccentTabPicker(selection: $selectedTab, labels: ["Info", "Shell", "Logs"])
                     .frame(width: 260)
             }
         }
@@ -167,55 +167,107 @@ struct MachineDetailView: View {
     }
 }
 
-/// Logs tab: fetches `container machine logs <id>` on demand.
+/// Logs tab. Mirrors `ContainerLogsView`'s layout: filter field, a single
+/// Follow toggle (polls + auto-scrolls), Refresh / Clear / Copy, and a
+/// monospaced output area honoring the terminal font/contrast settings.
 struct MachineLogsView: View {
     let machineId: String
     @EnvironmentObject var containerManager: ContainerizationWrapper
-    @State private var logs: String = ""
-    @State private var isLoading = false
+    @State private var logsText: String = ""
+    @State private var isLoadingLogs = false
+    @State private var isFollowing = true
+    @State private var filterText = ""
+    @State private var refreshTask: Task<Void, Never>?
+
+    private let refreshIntervalNanos: UInt64 = 3_000_000_000
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Machine Logs").font(.largeTitle).fontWeight(.bold)
-                Spacer()
-                if isLoading { ProgressView().scaleEffect(0.8) }
-                Button { Task { await refresh() } } label: {
-                    Label("Refresh", systemImage: "arrow.clockwise")
-                }
-                .controlSize(.small)
-                .disabled(isLoading)
-                Button {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(logs, forType: .string)
-                } label: {
-                    Label("Copy", systemImage: "doc.on.doc")
-                }
-                .controlSize(.small)
-                .disabled(logs.isEmpty)
-            }
+        GeometryReader { proxy in
+            let logAreaHeight = max(240, proxy.size.height - 120)
+            VStack(alignment: .leading, spacing: 16) {
+                DetailSection(title: "Logs", icon: "doc.plaintext") {
+                    VStack(spacing: 12) {
+                        HStack(spacing: 12) {
+                            TextField("Filter", text: $filterText)
+                                .textFieldStyle(.roundedBorder)
+                            if isLoadingLogs {
+                                ProgressView().scaleEffect(0.7)
+                            }
+                            Toggle("Follow", isOn: $isFollowing)
+                                .toggleStyle(.switch)
+                            Button("Refresh") {
+                                Task { await refreshLogs() }
+                            }
+                            .disabled(isLoadingLogs || isFollowing)
+                            Button("Clear") { logsText = "" }
+                            Button("Copy") {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(filteredLogs, forType: .string)
+                            }
+                        }
 
-            ScrollView {
-                Text(logs.isEmpty ? "No logs loaded yet. Press Refresh." : logs)
-                    .font(.caption.monospaced())
-                    .textSelection(.enabled)
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
+                        ScrollViewReader { proxy in
+                            let s = SettingsManager.shared
+                            ScrollView {
+                                Text(filteredLogs.isEmpty ? "No logs yet." : filteredLogs)
+                                    .font(.custom(s.terminalFontName, size: s.terminalFontSize, relativeTo: .body).monospaced())
+                                    .foregroundColor(s.forceBlackTerminal ? .white : nil)
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(s.forceBlackTerminal ? 8 : 0)
+                                Color.clear.frame(height: 1).id("MACHINE_LOGS_BOTTOM")
+                            }
+                            .frame(height: logAreaHeight)
+                            .background(s.forceBlackTerminal ? Color.black : Color.clear)
+                            .clipShape(RoundedRectangle(cornerRadius: s.forceBlackTerminal ? AppRadius.small : 0))
+                            .onChange(of: logsText) { _, _ in
+                                guard isFollowing else { return }
+                                proxy.scrollTo("MACHINE_LOGS_BOTTOM", anchor: .bottom)
+                            }
+                        }
+                    }
+                }
             }
-            .background(Color(NSColor.textBackgroundColor).opacity(0.35))
-            .clipShape(RoundedRectangle(cornerRadius: AppRadius.card))
-            .cardOutline(AppRadius.card)
+            .padding()
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .padding()
-        .task(id: machineId) { await refresh() }
+        .onAppear { startAutoRefresh() }
+        .onDisappear { stopAutoRefresh() }
     }
 
-    private func refresh() async {
-        isLoading = true
-        defer { isLoading = false }
+    private var filteredLogs: String {
+        let trimmed = filterText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return logsText }
+        return logsText
+            .components(separatedBy: .newlines)
+            .filter { $0.localizedCaseInsensitiveContains(trimmed) }
+            .joined(separator: "\n")
+    }
+
+    private func startAutoRefresh() {
+        stopAutoRefresh()
+        refreshTask = Task {
+            while !Task.isCancelled {
+                if isFollowing {
+                    await refreshLogs()
+                }
+                try? await Task.sleep(nanoseconds: refreshIntervalNanos)
+            }
+        }
+    }
+
+    private func stopAutoRefresh() {
+        refreshTask?.cancel()
+        refreshTask = nil
+    }
+
+    private func refreshLogs() async {
+        isLoadingLogs = true
+        defer { isLoadingLogs = false }
         if let output = await containerManager.machineLogs(machineId: machineId) {
-            logs = CLIParsers.limitedLogOutput(output.trimmingCharacters(in: .whitespacesAndNewlines))
+            logsText = CLIParsers.limitedLogOutput(output.trimmingCharacters(in: .whitespacesAndNewlines))
+        } else {
+            logsText = "No logs available."
         }
     }
 }

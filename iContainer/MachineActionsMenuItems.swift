@@ -45,7 +45,7 @@ struct MachineActionsMenuItems: View {
             Label("Info", systemImage: "info.circle")
         }
         Button { onNavigateToTab(1) } label: {
-            Label("Run", systemImage: "terminal")
+            Label("Shell", systemImage: "terminal")
         }
         Button { onNavigateToTab(2) } label: {
             Label("Logs", systemImage: "doc.plaintext")

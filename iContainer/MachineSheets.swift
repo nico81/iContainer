@@ -125,6 +125,9 @@ struct EditMachineConfigSheet: View {
     @State private var memory = ""
     @State private var homeMount = "rw"
     @State private var isSaving = false
+    @State private var saved = false
+    @State private var isRestarting = false
+    @State private var isRunning = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -133,8 +136,10 @@ struct EditMachineConfigSheet: View {
             HStack(spacing: 10) {
                 TextField("CPUs", text: $cpus)
                     .textFieldStyle(.roundedBorder)
+                    .onChange(of: cpus) { _, _ in saved = false }
                 TextField("Memory, e.g. 4G", text: $memory)
                     .textFieldStyle(.roundedBorder)
+                    .onChange(of: memory) { _, _ in saved = false }
             }
 
             HStack {
@@ -146,15 +151,31 @@ struct EditMachineConfigSheet: View {
                 .labelsHidden()
                 .pickerStyle(.segmented)
                 .frame(width: 200)
+                .onChange(of: homeMount) { _, _ in saved = false }
+            }
+
+            if saved {
+                Label(
+                    isRunning
+                        ? "Saved. Restart the machine to apply the new configuration."
+                        : "Saved. The new configuration applies the next time the machine starts.",
+                    systemImage: "checkmark.circle.fill"
+                )
+                .font(.caption)
+                .foregroundColor(.green)
             }
 
             HStack {
                 Button("Save") { runSave() }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(isSaving)
-                if isSaving { ProgressView().scaleEffect(0.8) }
+                    .disabled(isSaving || isRestarting)
+                if isSaving || isRestarting { ProgressView().scaleEffect(0.8) }
                 Spacer()
-                Button("Close") { dismiss() }
+                if saved && isRunning {
+                    Button("Restart now") { runRestart() }
+                        .disabled(isRestarting)
+                }
+                Button(saved ? "Done" : "Close") { dismiss() }
             }
 
             Text("Changes take effect after the machine is restarted.")
@@ -162,13 +183,23 @@ struct EditMachineConfigSheet: View {
                 .foregroundColor(.secondary)
         }
         .padding()
-        .frame(minWidth: 460, minHeight: 220)
+        .frame(minWidth: 480, minHeight: 240)
         .task {
             if let details = await containerManager.inspectMachine(machineId: machineId) {
                 cpus = details.cpus.map(String.init) ?? ""
+                memory = Self.memoryField(details.memoryBytes)
                 homeMount = details.homeMount ?? "rw"
+                isRunning = details.status.isRunning
             }
         }
+    }
+
+    /// Bytes → a `set`-compatible memory string (e.g. 2147483648 → "2G").
+    static func memoryField(_ bytes: Int64?) -> String {
+        guard let bytes, bytes > 0 else { return "" }
+        let gib = Double(bytes) / 1_073_741_824.0
+        if gib == gib.rounded() { return "\(Int(gib))G" }
+        return String(format: "%.1fG", gib)
     }
 
     private func runSave() {
@@ -182,7 +213,18 @@ struct EditMachineConfigSheet: View {
                 homeMount: homeMount
             )
             isSaving = false
-            if ok { dismiss() }
+            saved = ok
+        }
+    }
+
+    private func runRestart() {
+        guard !isRestarting else { return }
+        isRestarting = true
+        Task {
+            await containerManager.stopMachine(machineId: machineId)
+            await containerManager.startMachine(machineId: machineId)
+            isRestarting = false
+            dismiss()
         }
     }
 }
