@@ -8,6 +8,9 @@ The format follows Keep a Changelog, and versions use semantic versioning:
 ## [Unreleased]
 
 ### Fixed
+- Settings window no longer blanks out when changing the app theme from
+  inside Settings; the custom Settings window now stays on the system
+  appearance while the main app window still follows the selected theme.
 - Container Logs now show the initial log snapshot immediately and always
   clear the loading spinner after refresh, instead of treating the first
   response only as a hidden delta baseline.
