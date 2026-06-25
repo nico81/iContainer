@@ -61,6 +61,31 @@ final class CLIParsersServiceTests: XCTestCase {
         XCTAssertEqual(details.version, "9.9.9")
     }
 
+    // MARK: - container CLI path selection
+
+    func testContainerCLIPathCandidatesPreferAppleSiliconHomebrewOverLegacyUsrLocal() {
+        let candidates = SettingsManager.containerCLIPathCandidates(
+            pathEnvironment: "/usr/local/bin:/opt/homebrew/bin:/usr/bin"
+        )
+
+        XCTAssertEqual(candidates.prefix(2), [
+            "/opt/homebrew/bin/container",
+            "/usr/local/bin/container"
+        ])
+    }
+
+    func testContainerCLIPathCandidatesDeduplicatePathEntries() {
+        let candidates = SettingsManager.containerCLIPathCandidates(
+            pathEnvironment: "/opt/homebrew/bin:/usr/local/bin:/custom/bin"
+        )
+
+        XCTAssertEqual(candidates, [
+            "/opt/homebrew/bin/container",
+            "/usr/local/bin/container",
+            "/custom/bin/container"
+        ])
+    }
+
     // MARK: - limitedLogOutput
 
     func testLimitedLogOutputShortPasses() {

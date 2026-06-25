@@ -364,6 +364,40 @@ extension SettingsManager {
         return FileManager.default.isExecutableFile(atPath: trimmed) ? trimmed : nil
     }
 
+    /// Candidate `container` CLI locations in the order iContainer should try
+    /// them. Homebrew on Apple Silicon installs into `/opt/homebrew`, while
+    /// older Intel/Rosetta installs often leave a stale binary in
+    /// `/usr/local/bin`. Prefer the Apple Silicon Homebrew path before the
+    /// legacy path so a leftover 0.x CLI does not mask a current 1.x install.
+    nonisolated static func containerCLIPathCandidates(pathEnvironment: String? = ProcessInfo.processInfo.environment["PATH"]) -> [String] {
+        var candidates: [String] = [
+            "/opt/homebrew/bin/container",
+            "/usr/local/bin/container"
+        ]
+
+        if let pathEnvironment {
+            for entry in pathEnvironment.split(separator: ":") {
+                candidates.append(String(entry) + "/container")
+            }
+        }
+
+        var seen = Set<String>()
+        return candidates.filter { seen.insert($0).inserted }
+    }
+
+    /// Resolved `container` CLI path shared by every process-spawning code
+    /// path. A valid Settings override still wins; otherwise candidates are
+    /// tried in `containerCLIPathCandidates` order.
+    nonisolated static func resolvedContainerCLIPath() -> String? {
+        if let custom = storedCustomCLIPath() {
+            return custom
+        }
+        for path in containerCLIPathCandidates() where FileManager.default.isExecutableFile(atPath: path) {
+            return path
+        }
+        return nil
+    }
+
     /// In-container shell path to try first when starting an exec session.
     nonisolated static func storedShellContainerPath() -> String {
         let raw = UserDefaults.standard.string(forKey: "settings.defaultShell") ?? "sh"

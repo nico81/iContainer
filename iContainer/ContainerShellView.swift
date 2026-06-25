@@ -142,25 +142,7 @@ final class ContainerShellSession: ObservableObject {
     }
 
     private func resolveContainerCLIPath() -> String? {
-        if let custom = SettingsManager.storedCustomCLIPath() {
-            return custom
-        }
-        let candidates = [
-            "/usr/local/bin/container",
-            "/opt/homebrew/bin/container"
-        ]
-        for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
-            return path
-        }
-        if let pathEnv = ProcessInfo.processInfo.environment["PATH"] {
-            for entry in pathEnv.split(separator: ":") {
-                let path = String(entry) + "/container"
-                if FileManager.default.isExecutableFile(atPath: path) {
-                    return path
-                }
-            }
-        }
-        return nil
+        SettingsManager.resolvedContainerCLIPath()
     }
 }
 

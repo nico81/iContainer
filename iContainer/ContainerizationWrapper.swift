@@ -229,25 +229,7 @@ class ContainerizationWrapper: ObservableObject {
     }
 
     nonisolated private static func resolveCLIPath() -> String? {
-        if let custom = SettingsManager.storedCustomCLIPath() {
-            return custom
-        }
-        let candidates = [
-            "/usr/local/bin/container",
-            "/opt/homebrew/bin/container"
-        ]
-        for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
-            return path
-        }
-        if let pathEnv = ProcessInfo.processInfo.environment["PATH"] {
-            for entry in pathEnv.split(separator: ":") {
-                let path = String(entry) + "/container"
-                if FileManager.default.isExecutableFile(atPath: path) {
-                    return path
-                }
-            }
-        }
-        return nil
+        SettingsManager.resolvedContainerCLIPath()
     }
 
     // MARK: - Container Management
@@ -1110,7 +1092,7 @@ enum DependencyError: Error, Identifiable {
     var description: String {
         switch self {
         case .cliMissing:
-            return "CLI tool 'container' not found at /usr/local/bin/container."
+            return "CLI tool 'container' not found. Install Apple container with Homebrew or set a custom CLI path in Settings."
         }
     }
 }
