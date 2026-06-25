@@ -7,6 +7,11 @@ The format follows Keep a Changelog, and versions use semantic versioning:
 
 ## [Unreleased]
 
+### Fixed
+- Container Logs now show the initial log snapshot immediately and always
+  clear the loading spinner after refresh, instead of treating the first
+  response only as a hidden delta baseline.
+
 ## [2.0.0] - 2026-06-23
 
 ### Added
