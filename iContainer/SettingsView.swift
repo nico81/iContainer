@@ -11,6 +11,8 @@ import AppKit
 /// the System Settings look introduced in recent macOS releases.
 struct SettingsView: View {
     @EnvironmentObject var settings: SettingsManager
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismissWindow) private var dismissWindow
     @State private var showingResetConfirmation = false
     @State private var selection: SettingsSection = .general
 
@@ -71,6 +73,29 @@ struct SettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("All preferences will be restored to their default values.")
+        }
+        // Recreate the Settings window on a theme change. On macOS 26,
+        // live-flipping a custom Window's appearance (from the picker that
+        // lives in this same window) blanks its content; a freshly opened
+        // window always renders correctly in the new scheme. Only do this
+        // when the *effective* appearance actually changes — e.g. switching
+        // System↔Light while the system is already light is a no-op and
+        // shouldn't flicker the window.
+        .onChange(of: settings.theme) { oldValue, newValue in
+            guard Self.isDark(oldValue) != Self.isDark(newValue) else { return }
+            dismissWindow(id: "settings")
+            DispatchQueue.main.async { openWindow(id: "settings") }
+        }
+    }
+
+    /// Resolves a theme preference to whether it renders dark right now,
+    /// expanding `.system` to the current system appearance.
+    private static func isDark(_ theme: ThemePreference) -> Bool {
+        switch theme {
+        case .dark: return true
+        case .light: return false
+        case .system:
+            return NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         }
     }
 

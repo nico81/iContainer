@@ -7,11 +7,17 @@ The format follows Keep a Changelog, and versions use semantic versioning:
 
 ## [Unreleased]
 
+### Added
+- "Reveal in Finder" button next to the Data Root path in the Apple
+  container service Info tab, opening the data directory in Finder.
+
 ### Fixed
 - Settings window no longer blanks out when changing the app theme from
-  inside Settings; the custom Settings window now stays on the system
-  appearance while the main app window still follows the selected theme.
-  Thanks to [@it4nodummies](https://github.com/it4nodummies) (#2).
+  inside it (a macOS 26 live-appearance-flip bug). The window now follows
+  the app theme and is recreated only when the effective appearance
+  actually changes, so neutral toggles don't flicker.
+  Thanks to [@it4nodummies](https://github.com/it4nodummies) for the
+  original report (#2).
 - The `container` CLI path is now resolved from a single shared helper
   (replacing four duplicated copies) and chosen by **version** across the
   known install locations, so a stale binary in one path can't shadow a

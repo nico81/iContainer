@@ -67,14 +67,15 @@ struct iContainerApp: App {
         // causes a publish-during-view-update loop on macOS 26 (spinner
         // + 100% CPU), so we use a regular `Window` instead and surface
         // it through a `CommandGroup(replacing: .appSettings)` so Cmd+,
-        // and the app menu item still work. The main window applies the
-        // in-app theme preference, but this Settings window intentionally
-        // stays on the system appearance: on macOS 26, live-changing a
-        // custom Window's preferred color scheme from the picker inside that
-        // same window can blank its content until AppKit forces a redraw.
+        // and the app menu item still work. It follows the in-app theme via
+        // `preferredColorScheme`. Live-flipping a custom Window's appearance
+        // from the picker inside it blanks its content on macOS 26, so
+        // `SettingsView` recreates the window on a theme change instead — a
+        // freshly opened window renders correctly in the new scheme.
         Window("Settings", id: "settings") {
             SettingsView()
                 .environmentObject(SettingsManager.shared)
+                .preferredColorScheme(themeColorScheme)
         }
         .defaultPosition(.center)
 

@@ -96,7 +96,29 @@ struct ServiceDetailView: View {
                     // Paths
                     DetailSection(title: "System Paths", icon: "folder") {
                         DetailRow(label: "Install Root", value: details.installRoot ?? "-", isMonospaced: true)
-                        DetailRow(label: "Data Root", value: details.dataRoot ?? "-", isMonospaced: true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Data Root")
+                                .font(InfoTextStyle.labelFont)
+                                .foregroundColor(.secondary)
+                                .fontWeight(.medium)
+                            HStack(spacing: 6) {
+                                Text(details.dataRoot ?? "-")
+                                    .font(InfoTextStyle.monospacedValueFont)
+                                    .textSelection(.enabled)
+                                if let dataRoot = details.dataRoot,
+                                   !dataRoot.isEmpty, dataRoot != "-" {
+                                    Button {
+                                        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: dataRoot)])
+                                    } label: {
+                                        Image(systemName: "folder")
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .help("Reveal in Finder")
+                                }
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 2)
                     }
 
                     DetailSection(title: "Status Output", icon: "terminal") {
