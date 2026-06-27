@@ -7,6 +7,8 @@ The format follows Keep a Changelog, and versions use semantic versioning:
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-06-26
+
 ### Added
 - "Reveal in Finder" button next to the Data Root path in the Apple
   container service Info tab, opening the data directory in Finder.
