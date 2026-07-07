@@ -87,6 +87,14 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
 - `runCommandBlocking` must drain the output pipe BEFORE
   `waitUntilExit()` — CLI 1.0.0 outputs can exceed the 64 KB pipe
   buffer and deadlock otherwise.
+- Verified compatible with `container` CLI **1.1.0** (2026-07-07,
+  apiserver commit `5973b9c`). Despite the release-notes legend
+  mentioning breaking-CLI-change markers (⌨️), no 1.1.0 item carries
+  one; the JSON shapes are unchanged from 1.0.0. Regression run
+  covered `list`, `inspect` (running container, IP in CIDR),
+  `image list`, `machine list`/`inspect` (`userSetup.uid/gid`),
+  `system status`, and both stats parsers against the live CLI — all
+  parsers matched, and the 65-test unit suite passed.
 
 ### Per-container detail
 - `iContainer/ContainerDetailView.swift`: thin TabView host for the
