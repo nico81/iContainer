@@ -22,6 +22,7 @@ struct ContainerLogsView: View {
     /// Auto Scroll pair, which always moved together in practice.
     @State private var isFollowing = true
     @State private var filterText = ""
+    @State private var showingExplanation = false
     @State private var refreshTask: Task<Void, Never>?
     private let tailLines: Int = 200
 
@@ -59,6 +60,17 @@ struct ContainerLogsView: View {
                                 NSPasteboard.general.clearContents()
                                 NSPasteboard.general.setString(filteredLogs, forType: .string)
                             }
+                            Button {
+                                showingExplanation = true
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "sparkles")
+                                        .foregroundStyle(.appleIntelligence)
+                                    Text("Explain")
+                                }
+                            }
+                            .disabled(logAccumulator.text.isEmpty)
+                            .help("Analyze these logs with on-device AI")
                         }
 
                         ScrollViewReader { proxy in
@@ -96,6 +108,13 @@ struct ContainerLogsView: View {
             } else {
                 stopAutoRefresh()
             }
+        }
+        .sheet(isPresented: $showingExplanation) {
+            LogExplanationSheet(
+                subjectLabel: containerId,
+                logs: filteredLogs,
+                onClose: { showingExplanation = false }
+            )
         }
     }
 

@@ -18,6 +18,26 @@ extension Color {
     static let hairline = Color.gray.opacity(0.2)
 }
 
+extension ShapeStyle where Self == LinearGradient {
+    /// The multicolour "Apple Intelligence" wash used to tint AI affordances —
+    /// the ✨ on the log-analysis button and its sheet header. A diagonal
+    /// pink → purple → blue → cyan gradient in the familiar Apple Intelligence
+    /// palette. Usable anywhere a `ShapeStyle` is expected, e.g.
+    /// `Image(systemName: "sparkles").foregroundStyle(.appleIntelligence)`.
+    static var appleIntelligence: LinearGradient {
+        LinearGradient(
+            colors: [
+                Color(red: 0.97, green: 0.24, blue: 0.53),  // pink
+                Color(red: 0.68, green: 0.31, blue: 0.93),  // purple
+                Color(red: 0.33, green: 0.44, blue: 0.96),  // blue
+                Color(red: 0.28, green: 0.79, blue: 1.00)   // cyan
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+}
+
 extension View {
     /// Standard 1pt hairline outline, matching the given corner radius.
     /// Replaces the ad-hoc `.overlay(RoundedRectangle(...).stroke(...))`

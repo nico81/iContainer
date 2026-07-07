@@ -200,6 +200,7 @@ struct MachineLogsView: View {
     @State private var isLoadingLogs = false
     @State private var isFollowing = true
     @State private var filterText = ""
+    @State private var showingExplanation = false
     @State private var refreshTask: Task<Void, Never>?
 
     private let refreshIntervalNanos: UInt64 = 3_000_000_000
@@ -229,6 +230,17 @@ struct MachineLogsView: View {
                                 NSPasteboard.general.clearContents()
                                 NSPasteboard.general.setString(filteredLogs, forType: .string)
                             }
+                            Button {
+                                showingExplanation = true
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "sparkles")
+                                        .foregroundStyle(.appleIntelligence)
+                                    Text("Explain")
+                                }
+                            }
+                            .disabled(logsText.isEmpty)
+                            .help("Analyze these logs with on-device AI")
                         }
 
                         ScrollViewReader { proxy in
@@ -258,6 +270,13 @@ struct MachineLogsView: View {
         }
         .onAppear { startAutoRefresh() }
         .onDisappear { stopAutoRefresh() }
+        .sheet(isPresented: $showingExplanation) {
+            LogExplanationSheet(
+                subjectLabel: machineId,
+                logs: filteredLogs,
+                onClose: { showingExplanation = false }
+            )
+        }
     }
 
     private var filteredLogs: String {
