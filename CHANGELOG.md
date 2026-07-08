@@ -7,6 +7,17 @@ The format follows Keep a Changelog, and versions use semantic versioning:
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-07-08
+
+### Fixed
+- Fixed a 100% CPU busy-loop that could pin a core for the rest of the
+  app's life. When a streamed output stopped (a shell exited, a container
+  or machine was stopped, a build finished, or the service log stream
+  ended), the file-handle reader kept firing at end-of-file instead of
+  shutting down. The reader now tears down on EOF (and on process
+  termination) in all four streaming paths: container shell, machine
+  shell, streamed command output, and service logs.
+
 ## [2.1.0] - 2026-07-07
 
 ### Added
