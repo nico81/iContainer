@@ -173,7 +173,14 @@ class ContainerizationWrapper: ObservableObject {
 
                 pipe.fileHandleForReading.readabilityHandler = { handle in
                     let data = handle.availableData
-                    guard !data.isEmpty, let chunk = String(data: data, encoding: .utf8) else { return }
+                    // EOF: stop monitoring so the handler doesn't busy-loop on
+                    // the readable-at-EOF condition. (The termination handler
+                    // drains any final bytes and clears this too.)
+                    guard !data.isEmpty else {
+                        handle.readabilityHandler = nil
+                        return
+                    }
+                    guard let chunk = String(data: data, encoding: .utf8) else { return }
                     Task { @MainActor in onChunk(chunk) }
                 }
 

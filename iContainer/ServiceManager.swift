@@ -156,9 +156,15 @@ class ServiceManager: ObservableObject {
         process.standardError = pipe
         pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
-            guard !data.isEmpty, let chunk = String(data: data, encoding: .utf8) else {
+            // Empty data means EOF (the `-f` log process exited). Remove the
+            // handler so the fd-monitoring queue stops re-invoking it in a
+            // busy loop; the termination handler clears it too, but the EOF
+            // read can land first.
+            guard !data.isEmpty else {
+                handle.readabilityHandler = nil
                 return
             }
+            guard let chunk = String(data: data, encoding: .utf8) else { return }
             Task { @MainActor [weak self] in
                 self?.appendServiceLogChunk(chunk)
             }

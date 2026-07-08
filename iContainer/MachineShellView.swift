@@ -100,7 +100,15 @@ final class MachineShellSession: ObservableObject {
 
         output.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
-            guard !data.isEmpty else { return }
+            // Empty data signals EOF — the `machine run` process closed its
+            // output (it exited, or the machine was stopped). Remove the
+            // handler now: otherwise the file handle stays "readable" at EOF
+            // and the fd-monitoring queue re-invokes this block in a tight
+            // loop, pinning a CPU core at 100% for the rest of the app's life.
+            guard !data.isEmpty else {
+                handle.readabilityHandler = nil
+                return
+            }
             guard let chunk = String(data: data, encoding: .utf8) else { return }
             DispatchQueue.main.async {
                 self?.output.append(contentsOf: chunk)
@@ -108,6 +116,9 @@ final class MachineShellSession: ObservableObject {
         }
 
         process.terminationHandler = { [weak self] _ in
+            // Belt-and-suspenders: also tear down the reader when the process
+            // ends, in case termination is observed before the EOF read.
+            output.fileHandleForReading.readabilityHandler = nil
             DispatchQueue.main.async {
                 self?.isRunning = false
                 if self?.output.isEmpty == true {
