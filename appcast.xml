@@ -3,6 +3,16 @@
     <channel>
         <title>iContainer</title>
         <item>
+            <title>2.2.1</title>
+            <pubDate>Sat, 18 Jul 2026 23:28:43 +0200</pubDate>
+            <link>https://github.com/nico81/iContainer</link>
+            <sparkle:version>23</sparkle:version>
+            <sparkle:shortVersionString>2.2.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <enclosure url="https://github.com/nico81/iContainer/releases/download/v2.2.1/iContainer-v2.2.1.dmg" length="26221158" type="application/octet-stream" sparkle:edSignature="YGfuHeJQ/kZ72uaR//3zqCYtpFRD8zQUSo07ziq+YvSX24O2JHiYmd/m1u3K34TWSijzXpcGOZaF00byRHivDA=="/>
+        </item>
+        <item>
             <title>2.2.0</title>
             <pubDate>Sat, 18 Jul 2026 15:30:58 +0200</pubDate>
             <link>https://github.com/nico81/iContainer</link>

@@ -44,9 +44,10 @@ A native macOS app to manage [Apple Container](https://github.com/apple/containe
 1. Install the Apple Container CLI: download the latest `.pkg` from the
    [releases page](https://github.com/apple/container/releases) and install it,
    confirming the recommended default kernel.
-2. Download the latest iContainer build from
-   [Releases](../../releases), or install via Homebrew (see below), or
-   build from source (see below).
+2. Download the latest iContainer `.dmg` from
+   [Releases](../../releases), open it and drag **iContainer** into
+   Applications; or install via Homebrew (see below), or build from source
+   (see below).
 3. Start the container service from the app — everything else flows from there.
 
 If the CLI is missing, the app shows a setup screen with a download link instead of the main UI.

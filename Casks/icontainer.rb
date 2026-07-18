@@ -1,8 +1,8 @@
 cask "icontainer" do
-  version "2.2.0"
-  sha256 "3b79baf52e0e5e793d572a96ecc41e7b4084246f72f3366bcb01959a0e608599"
+  version "2.2.1"
+  sha256 "0156583be88e19779308b61d8c16fe084048750266f174c4244592fba87c764a"
 
-  url "https://github.com/nico81/iContainer/releases/download/v#{version}/iContainer-v#{version}.zip"
+  url "https://github.com/nico81/iContainer/releases/download/v#{version}/iContainer-v#{version}.dmg"
   name "iContainer"
   desc "Native macOS UI for Apple's container CLI"
   homepage "https://github.com/nico81/iContainer"

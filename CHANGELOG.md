@@ -7,6 +7,19 @@ The format follows Keep a Changelog, and versions use semantic versioning:
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-07-18
+
+### Fixed
+- **2.2.0 was blocked by Gatekeeper on download.** The app embeds
+  Sparkle.framework, and downloading the bare `.zip` through a browser let
+  macOS auto-extract it in a way that broke the framework's code-signature
+  seal ("unsealed contents present in the root directory of an embedded
+  framework"), so macOS refused to open it even though it was notarized.
+  Fixed by distributing a **DMG** (mounted, not extracted, so the bundle
+  arrives intact) and by signing the Sparkle framework **inside-out**
+  instead of with `codesign --deep`. The release now also verifies the app
+  *from inside the mounted DMG* before publishing.
+
 ## [2.2.0] - 2026-07-18
 
 ### Added
