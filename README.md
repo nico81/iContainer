@@ -27,6 +27,8 @@ A native macOS app to manage [Apple Container](https://github.com/apple/containe
 - **Per-container detail tabs** — Info (network, mounts, DNS, env, exposed-port browser links), Stats with charts, persistent Shell session, Logs with follow mode.
 - **Images** — list, pull, inspect, delete; registry login with guided error handling for auth failures.
 - **Apple container service** — start/stop the system service, view its status, version, service-wide stats, and live system logs.
+- **Docker interop** 🐳 — import images from a local Docker installation (`docker save` → `container image load`, no registry round-trip) and **create a container from an existing Docker container**: iContainer reads its `docker inspect` configuration, translates ports, mounts, environment, entrypoint/command, user, resources and network for Apple Container, and lists anything that has no equivalent before you confirm. Docker is never modified.
+- **Docker Compose (MVP)** — open a `compose.yaml` / `docker-compose.yml`, review the services it can run and the directives it can't map, then *Up* / *Down* the project on a shared per-project network in `depends_on` order.
 - **Automatic updates** — iContainer keeps itself up to date via [Sparkle](https://sparkle-project.org): it checks in the background and installs new versions in place (with your confirmation and the release notes), verified by signature. It also notifies you when a newer release of the `container` CLI is available.
 - **Notifications** — optional system notifications when a container stops or an action fails.
 - **Settings** — theme, launch at login, auto-start service, quit behavior, polling cadence, confirmation dialogs, default shell, terminal font, custom CLI path, default registry.
@@ -38,6 +40,8 @@ A native macOS app to manage [Apple Container](https://github.com/apple/containe
 - macOS 26 or later (Apple silicon)
 - [Apple Container CLI](https://github.com/apple/container/releases) installed
 - Apple Intelligence enabled (optional) — only needed for the on-device AI log analysis; everything else works without it
+- Docker Desktop or a `docker` CLI (optional) — only needed to import images / clone containers from Docker
+- A DNS domain configured for the container service (optional) — needed for containers to reach each other by name (compose services, cloned Docker stacks): add `[dns]` / `domain = "test"` to `~/.config/container/config.toml`, restart the service, then `sudo container system dns create test` once. The app tells you when it's missing.
 
 ## Getting started
 

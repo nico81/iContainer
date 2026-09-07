@@ -7,6 +7,8 @@ The format follows Keep a Changelog, and versions use semantic versioning:
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-09-07
+
 ### Added
 - **Docker Compose (MVP)** — *Open Compose File…* (toolbar `+` menu) parses a
   `compose.yaml` / `docker-compose.yml` with a dependency-free pure parser
@@ -15,7 +17,52 @@ The format follows Keep a Changelog, and versions use semantic versioning:
   `<project>-<service>`, share a per-project network, and start in
   `depends_on` order. Unsupported directives (`build`, `healthcheck`,
   `restart`, `deploy`, named volumes, custom networks…) are reported, not
-  fatal.
+  fatal. The sheet also says whether services will be able to reach each
+  other by name (see *Container DNS* below).
+- **Import images from Docker** — *Import Image from Docker…* (toolbar `+`
+  menu and the Images section header, shown only when a `docker` CLI is
+  installed) lists the tagged images of your local Docker installation and
+  copies the selected one into Apple Container with `docker save` →
+  `container image load` — no registry round-trip, same bytes. If the
+  reference already exists in Apple Container you're asked before its tag is
+  moved to the imported image. Handles Docker not installed / not running
+  (with an *Open Docker Desktop* shortcut).
+- **Create a container from a Docker container** — new *From Docker
+  Container* source in the create sheet. Pick one of your Docker containers
+  and iContainer reads its configuration (`docker inspect`) and translates it
+  for Apple Container: image, name, published ports, bind mounts and named
+  volumes (created empty), environment (image defaults stripped),
+  entrypoint/command, working directory, user, CPU/memory limits,
+  capabilities, tmpfs, read-only rootfs, and the user-defined network it was
+  attached to (recreated if missing). Everything that has no equivalent —
+  restart policies, host networking, privileged mode, healthchecks, devices,
+  links — is listed as a warning before you create. The image can be
+  imported from Docker (default when Docker has it) or pulled from a
+  registry. Ports/volumes/env land in the usual editors for review.
+- **Container DNS awareness** — the app now reads the DNS domain configured
+  for the container service (`[dns] domain` in
+  `~/.config/container/config.toml`, via `container system property list`).
+  When set, compose services and cloned Docker containers reach each other
+  by plain container name (they're also created with `--dns-search
+  <domain>` for good measure), and the Compose / Docker sheets say so; when
+  unset they explain how to enable it. Without a domain, containers can only reach each other by
+  IP — a limitation of the container service, not of the app.
+- Settings → Advanced: optional path override for the `docker` binary.
+
+### Changed
+- `container create` flags are now produced by a single, unit-tested
+  `ContainerCreateSpec` → arguments builder shared by the create sheet,
+  compose Up and the Docker clone flow (no behaviour change).
+
+### Notes
+- Verified compatible with Apple `container` CLI **1.3.1** (2026-09-07).
+  1.2.0 tidied the structured (`--format json`) output of `ls`/`inspect` for
+  containers, images, networks and volumes; the shapes our parsers accept are
+  unchanged from 1.0/1.1 (`status` object, `configuration.name` for images,
+  flat machine list, `userSetup` in machine inspect). `--scheme auto` was
+  removed in 1.2.0 (not used by the app). Full unit suite and a live
+  regression of list/inspect/image list/machine list/system status/stats
+  passed. New `container cp` (1.2.0) is a candidate for a future release.
 
 ## [2.2.1] - 2026-07-18
 

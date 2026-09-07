@@ -42,6 +42,15 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
 - `iContainer/ComposeSheets.swift`: `ComposeSheet` — review + Up/Down UI
   for a parsed compose file (project name derived from the file's parent
   directory).
+- `iContainer/DockerImportSheet.swift`: "Import Image from Docker" — lists
+  Docker's tagged images, `docker save` → `container image load`, asks
+  before re-pointing an existing reference; handles Docker not installed /
+  daemon stopped.
+- `iContainer/DockerContainerPickerView.swift`: the "From Docker Container"
+  source of the create sheet — picks a Docker container, shows the
+  translated configuration, the DNS note and the translation warnings.
+  Prefill of name/ports/volumes/env is done by `ContentView`
+  (`loadDockerContainerConfiguration`, `runCreateFromDocker`).
 - `iContainer/WindowResizeConfigurator.swift`: `NSViewRepresentable` that
   makes sheets resizable with a minimum size.
 - `iContainer/ViewExtensions.swift`: `View.applyIf` for conditional
@@ -80,6 +89,21 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
   `networkName(forProject:)`. Unsupported directives are collected in
   `ParsedComposeFile.ignoredDirectives`, never fatal. `composeUp` /
   `composeDown` in `ContainerizationWrapper` are the side-effecting half.
+- `iContainer/ContainerCreateSpec.swift`: `ContainerCreateSpec` (everything
+  `container create` needs, as data) + `ContainerCLIArguments.create` — the
+  single, unit-tested flag builder used by `createContainer(spec:)`,
+  `composeUp` and the Docker clone flow. Flag order is fixed.
+- `iContainer/DockerWrapper.swift`: `@MainActor ObservableObject` bridging a
+  local Docker installation, read-only: availability probing every 30 s
+  (`notInstalled` / `daemonUnavailable` / `available(serverVersion)`),
+  `docker images` / `ps -a` (NDJSON), `inspect`, image env, `docker save`
+  (arm64-filtered, full-image fallback). Injected as an environment object.
+- `iContainer/DockerParsers.swift`: pure parsers for Docker's JSON plus the
+  Docker → `container` translation (`translate`) with explicit warnings,
+  `normalizedReference`, `parseLoadedReferences`. Tested against real
+  captured output (`iContainerTests/DockerFixtures.swift`).
+- `iContainer/CLIProcess.swift`: shared blocking process runner (drain
+  before wait) for binaries other than `container`.
 - `iContainer/ContainerStatsStore.swift`: standalone `ObservableObject`
   holding rolling per-container resource history (CPU/memory/network),
   kept off the wrapper so frequent stats mutations don't re-render the
@@ -105,6 +129,66 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
   `image list`, `machine list`/`inspect` (`userSetup.uid/gid`),
   `system status`, and both stats parsers against the live CLI — all
   parsers matched, and the 65-test unit suite passed.
+
+- Verified compatible with `container` CLI **1.3.1** (2026-09-07, apiserver
+  commit `a9a62e2`). 1.2.0's release notes mention a cleanup of the
+  structured output for `ls`/`inspect` (containers, images, networks,
+  volumes); live shapes still match what the parsers accept: `list`/`inspect`
+  `status` = `{state, networks}`; `image list` = `configuration.{name,
+  descriptor, creationDate}` + `variants`; `machine list` is **flat**
+  (`cpus, memory, diskSize, default, createdDate, status, id`) and `machine
+  inspect` adds `homeMount, image, platform, userSetup`; `system status`
+  adds `apiserver.version/commit/build` rows (parsed). `--scheme auto` was
+  removed in 1.2.0 (unused). `network`/`volume inspect` are
+  `{configuration, id, status}`. Not yet used: `container cp` (1.2.0).
+- `container system property list` prints TOML (`[build]`, `[container]`,
+  `[dns]`); `CLIParsers.parseSystemProperties` / `systemDNSDomain(from:)`
+  read it.
+
+### Docker interop (verified on Docker 29.4.3 / Desktop 4.73, containerd image store)
+- `docker save <ref> --platform linux/arm64 -o x.tar` writes an OCI-layout
+  tar (`index.json`, `oci-layout`, `blobs/`, plus legacy `manifest.json`)
+  that `container image load -i x.tar` accepts. The loaded name comes from
+  the `io.containerd.image.name` annotation (e.g. `docker.io/library/
+  alpine:latest`, listed as `alpine:latest`). The load output also prints
+  `untagged@sha256:…` for the attestation manifest — filtered out.
+- Loading a reference that already exists in the Apple store **re-points
+  that tag** to the imported image (the old image stays by digest) — the
+  import sheet confirms first (`ContainerizationWrapper.hasImage`, compared
+  via `DockerParsers.normalizedReference`).
+- `docker images/ps --format json` are **NDJSON** (one object per line);
+  `ps` truncates `Mounts`/`Labels`, so real config comes from `inspect`.
+  Docker Desktop stamps `desktop.docker.io/*` labels — never copied.
+- Translation rules live in `DockerParsers.translate` (see tests):
+  `PortBindings` → `-p` (random host port → same as container port +
+  warning); bind mounts → `-v src:dst[:ro]`; named volumes → `-v name:dst`
+  + `volumesToCreate` (created empty via `container volume create`);
+  `Entrypoint`+`Cmd` → `--entrypoint first` + remaining args; env minus the
+  image's own `Config.Env`; `NanoCpus` → whole `--cpus` (rounded up —
+  the CLI rejects fractions); `Memory` bytes → `--memory`; one user-defined
+  network → `--network` + `networkToCreate`; restart policy, host/none
+  network, privileged, healthcheck, devices, GPU, extra_hosts, links →
+  warnings only. A `com.icontainer.source=docker:<id12>` label is added.
+
+### Container DNS / service discovery (verified on 1.3.1)
+- Name resolution only exists when the service has a DNS domain:
+  `[dns] domain = "test"` in `~/.config/container/config.toml` + service
+  restart (the host side, `sudo container system dns create test`, writes
+  `/etc/resolver/…` so the Mac resolves `<name>.test`). Without it the
+  `[dns]` section is empty and nothing resolves, on any network.
+- With a domain: `<name>.<domain>` resolves from every container (also
+  across networks) and from the host, and bare `<name>` resolves too — on
+  1.3.1 the service writes `domain <domain>` into each container's
+  resolv.conf, on the default **and** on user-created networks (the
+  networking guide's "bare names don't work on custom networks" caveat did
+  not reproduce). `ContainerCreateSpec.dnsSearchDomains` still passes
+  `--dns-search <domain>` as belt and braces; `composeUp` and the Docker
+  clone set it from `ContainerizationWrapper.systemDNSDomain` (refreshed
+  each poll).
+- Compose caveat: containers are named `<project>-<service>`, so bare
+  compose *service* names (`db`) are **not** aliased — only the container
+  name resolves. The Compose sheet and the Docker picker show a DNS status
+  line (green note / orange how-to) accordingly.
 
 ### Per-container detail
 - `iContainer/ContainerDetailView.swift`: thin TabView host for the
@@ -303,6 +387,12 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
   user click) so the same UI action doesn't produce two visible
   artefacts (in-app alert + system banner).
 
+### Tests (Docker / spec)
+- `iContainerTests/DockerParsersTests.swift` (real fixtures in
+  `DockerFixtures.swift`, sanitised) and
+  `iContainerTests/ContainerCLIArgumentsTests.swift`; system-property
+  parsing is covered in `CLIParsersServiceTests`.
+
 ## Current UX Rules (Important)
 - The app shows a dependency error screen if CLI `container` is not available.
 - Sidebar container list is sorted:
@@ -363,6 +453,15 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
   - create/edit sheets are resizable with a larger centered minimum window
   - save is disabled while edit settings are loading to avoid accidental loss of existing values
   - applying changes recreates the container with updated settings
+- Docker entry points (`Import Image from Docker…` in the `+` menu and the
+  Images header icon, the `From Docker Container` create source) are shown
+  only when a `docker` CLI is found; inside them, "Docker isn't running"
+  offers *Open Docker Desktop* + *Retry*. Docker state is never modified.
+- Importing an image whose reference already exists in Apple Container asks
+  for confirmation (the tag moves to the imported image).
+- Cloning a Docker container always shows the translation warnings and the
+  DNS status before *Create*; ports/volumes/env are prefilled into the
+  standard editors so the user can adjust them.
 
 ## Shell Model
 - Container shell is persistent per container (session cache by `containerId`).

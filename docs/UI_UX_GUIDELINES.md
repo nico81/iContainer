@@ -283,6 +283,25 @@ Keep iContainer clear, predictable, and fast for container operations, with mini
   - plaintext doc = logs
 - Avoid introducing decorative styles that reduce readability for operational data.
 
+## Docker interop
+- Docker features are additive and read-only towards Docker: never start,
+  stop, delete or modify anything in Docker from iContainer.
+- Show Docker entry points only when a `docker` CLI is present (`+` menu
+  item, Images header icon, "From Docker Container" create source). When
+  the daemon is down, say so plainly and offer *Open Docker Desktop* and
+  *Retry* instead of a bare error.
+- Importing an image that already exists in Apple Container must ask before
+  moving the tag; the confirmation names the reference.
+- Cloning a Docker container is a *translation*, not a migration: always
+  list what was approximated or dropped (restart policy, host network,
+  privileged, healthcheck, devices, named-volume data) before *Create*, and
+  prefill ports/volumes/env into the standard editors for review.
+- Name resolution depends on the container service's DNS domain: both the
+  Compose sheet and the Docker picker show a one-line status — green note
+  when configured, orange how-to (config.toml + restart + `container system
+  dns create`) when not. Never promise "services reach each other by name"
+  unconditionally.
+
 ## Pre-Release UX Checklist
 - Verify service ON/OFF state transitions update sidebar actions correctly.
 - Verify context-menu tab targets open the expected tab.

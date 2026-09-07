@@ -10,9 +10,12 @@ spawning a process, touching the network, or hitting the filesystem.
 | `CLIParsersImageTests.swift` | `splitReference`, `parseImageList` |
 | `CLIParsersRegistryTests.swift` | `parseRegistryHosts`, `registryLoginHosts`, `isRegistryAuthError`, `isLikelyDockerHubImageReferenceError`, `looksLikeTopLevelHelp` |
 | `CLIParsersInspectTests.swift` | `parseEditableSettings`, `normalizedContainerName` |
-| `CLIParsersServiceTests.swift` | `parseServiceDetails`, `limitedLogOutput` |
+| `CLIParsersServiceTests.swift` | `parseServiceDetails`, `limitedLogOutput`, `parseSystemProperties` / `systemDNSDomain` |
+| `ComposeParserTests.swift` | `ComposeParser` (compose-file subset, ordering, unsupported directives) |
+| `ContainerCLIArgumentsTests.swift` | `ContainerCreateSpec` → `container create` flag builder |
+| `DockerParsersTests.swift` (+ `DockerFixtures.swift`) | Docker `images`/`ps` NDJSON, `inspect`, Docker → `container` translation rules, reference normalisation, `image load` output |
 
-About **45 test cases** in total.
+About **128 test cases** in total.
 
 ## Setup
 
