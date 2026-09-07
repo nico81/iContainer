@@ -116,6 +116,10 @@ Keep iContainer clear, predictable, and fast for container operations, with mini
   - `Container Path`: mount path inside the container
 - Existing/configured volumes must be visually emphasized above the add-volume controls.
 - `Host Path` should provide a Finder picker that supports both files and folders.
+- Validate the container name against the live list before Create: a
+  duplicate shows an inline warning with a one-click free-name suggestion
+  and disables Create — never let a long step (image import/build) run
+  only to fail on a name the app already knew was taken.
 
 ## Shell Experience
 - Shell output area should support selection/copy.

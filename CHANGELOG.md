@@ -48,6 +48,10 @@ The format follows Keep a Changelog, and versions use semantic versioning:
   unset they explain how to enable it. Without a domain, containers can only reach each other by
   IP — a limitation of the container service, not of the app.
 - Settings → Advanced: optional path override for the `docker` binary.
+- Create sheet: the container name is validated against the live container
+  list — a duplicate shows an inline warning with a one-click free name
+  (`<name>-2`) and disables Create, instead of failing after the image
+  import. (Found while cloning a Docker `grafana` next to an existing one.)
 
 ### Changed
 - `container create` flags are now produced by a single, unit-tested

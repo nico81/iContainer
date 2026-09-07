@@ -909,6 +909,19 @@ struct ContentView: View {
 
                 TextField("Name (optional)", text: $createName)
                     .textFieldStyle(.roundedBorder)
+                if createNameConflict {
+                    HStack(spacing: 8) {
+                        Label("A container named \"\(trimmedCreateName)\" already exists in Apple Container.", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                        Button("Use \"\(suggestedCreateName)\"") {
+                            createName = suggestedCreateName
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        Spacer(minLength: 0)
+                    }
+                }
 
                 Toggle("Start after creation", isOn: $createStartAfterCreation)
                     .toggleStyle(.checkbox)
@@ -1268,7 +1281,29 @@ struct ContentView: View {
         CreateImageSource.allCases.filter { $0 != .docker || dockerManager.isInstalled }
     }
 
+    private var trimmedCreateName: String {
+        createName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The CLI uses `--name` as the container ID, so a duplicate fails only
+    /// at `create` time — after a possibly long image import in the Docker
+    /// flow. Check up front against the live container list instead.
+    private var createNameConflict: Bool {
+        let name = trimmedCreateName
+        guard !name.isEmpty else { return false }
+        return containerManager.containers.contains { $0.name == name || $0.id == name }
+    }
+
+    /// First free `<name>-N` (N ≥ 2) for the inline "Use …" quick fix.
+    private var suggestedCreateName: String {
+        let taken = Set(containerManager.containers.flatMap { [$0.name, $0.id] })
+        var n = 2
+        while taken.contains("\(trimmedCreateName)-\(n)") { n += 1 }
+        return "\(trimmedCreateName)-\(n)"
+    }
+
     private var canCreateContainer: Bool {
+        if createNameConflict { return false }
         switch createImageSource {
         case .image:
             return !createImage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
