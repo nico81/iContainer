@@ -21,6 +21,15 @@ enum SidebarSelection: Hashable {
 private enum CreateImageSource: String, CaseIterable, Identifiable {
     case image = "Image"
     case dockerfile = "Build from Dockerfile"
+    case docker = "From Docker Container"
+
+    var id: String { rawValue }
+}
+
+/// How the image of a Docker container being cloned reaches Apple Container.
+private enum DockerImageStrategy: String, CaseIterable, Identifiable {
+    case importFromDocker = "Import from Docker"
+    case pullFromRegistry = "Pull from registry"
 
     var id: String { rawValue }
 }
@@ -49,7 +58,15 @@ struct ContentView: View {
     @EnvironmentObject var appNavigation: AppNavigation
     @EnvironmentObject var releaseChecker: ContainerReleaseChecker
     @EnvironmentObject var appReleaseChecker: AppReleaseChecker
+    @EnvironmentObject var dockerManager: DockerWrapper
     @Environment(\.openWindow) private var openWindow
+    @State private var showingDockerImportSheet = false
+    @State private var createDockerContainerID: String?
+    @State private var createDockerTranslation: DockerTranslation?
+    @State private var createDockerImageStrategy: DockerImageStrategy = .importFromDocker
+    @State private var isLoadingDockerConfig = false
+    @State private var createDockerLoadError: String?
+    @State private var createDockerProgress: String?
     @State private var showingCreateContainerSheet = false
     @State private var createImageSource: CreateImageSource = .image
     @State private var createImage = ""
@@ -258,6 +275,9 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingComposeSheet) {
             composeSheetContent
+        }
+        .sheet(isPresented: $showingDockerImportSheet) {
+            DockerImportSheet(onClose: { showingDockerImportSheet = false })
         }
         .alert("Cannot Open Compose File", isPresented: $showingComposeOpenError) {
             Button("OK", role: .cancel) { }
@@ -669,6 +689,15 @@ struct ContentView: View {
                         }
                         .buttonStyle(.borderless)
                         .disabled(isPullingImage)
+                        if dockerManager.isInstalled {
+                            Button {
+                                showingDockerImportSheet = true
+                            } label: {
+                                Image(systemName: "square.and.arrow.down.on.square")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Import image from Docker")
+                        }
                     }
                 }
                 .contextMenu { sectionReorderMenu(.images) }
@@ -836,6 +865,14 @@ struct ContentView: View {
                     } label: {
                         Label("Open Compose File…", systemImage: "square.stack.3d.up")
                     }
+                    if dockerManager.isInstalled {
+                        Divider()
+                        Button {
+                            showingDockerImportSheet = true
+                        } label: {
+                            Label("Import Image from Docker…", systemImage: "square.and.arrow.down.on.square")
+                        }
+                    }
                 } label: {
                     Image(systemName: "plus")
                 }
@@ -858,7 +895,7 @@ struct ContentView: View {
                     .font(.headline)
 
                 Picker("Image Source", selection: $createImageSource) {
-                    ForEach(CreateImageSource.allCases) { source in
+                    ForEach(availableCreateSources) { source in
                         Text(source.rawValue).tag(source)
                     }
                 }
@@ -1020,6 +1057,37 @@ struct ContentView: View {
                     }
                     .menuStyle(.button)
                     .help("Choose local image")
+                }
+            }
+        case .docker:
+            VStack(alignment: .leading, spacing: 10) {
+                DockerContainerPickerView(
+                    selectedContainerID: $createDockerContainerID,
+                    translation: createDockerTranslation,
+                    isLoading: isLoadingDockerConfig,
+                    loadError: createDockerLoadError,
+                    onSelect: { id in loadDockerContainerConfiguration(id: id) }
+                )
+                if createDockerTranslation != nil {
+                    Picker("Image", selection: $createDockerImageStrategy) {
+                        ForEach(DockerImageStrategy.allCases) { strategy in
+                            Text(strategy.rawValue).tag(strategy)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    TextField("Image reference", text: $createImage)
+                        .textFieldStyle(.roundedBorder)
+                    Text(createDockerImageStrategy == .importFromDocker
+                         ? "Exports the exact image from Docker (`docker save`) and loads it into Apple Container before creating — same bytes, no registry access."
+                         : "Apple Container pulls this reference from its registry when creating; tags may resolve to a newer image than the one Docker has.")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    if let progress = createDockerProgress {
+                        HStack(spacing: 8) {
+                            ProgressView().scaleEffect(0.7)
+                            Text(progress).font(.caption).foregroundColor(.secondary)
+                        }
+                    }
                 }
             }
         case .dockerfile:
@@ -1195,10 +1263,19 @@ struct ContentView: View {
             .filter { !$0.isEmpty }
     }
 
+    /// The Docker source only makes sense when a `docker` CLI is present.
+    private var availableCreateSources: [CreateImageSource] {
+        CreateImageSource.allCases.filter { $0 != .docker || dockerManager.isInstalled }
+    }
+
     private var canCreateContainer: Bool {
         switch createImageSource {
         case .image:
             return !createImage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        case .docker:
+            return createDockerTranslation != nil
+                && !isLoadingDockerConfig
+                && !createImage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .dockerfile:
             return !createBuildTag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && !createDockerfilePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -1210,6 +1287,8 @@ struct ContentView: View {
         switch createImageSource {
         case .image:
             return "Create"
+        case .docker:
+            return createDockerImageStrategy == .importFromDocker ? "Import & Create" : "Create"
         case .dockerfile:
             return "Build & Create"
         }
@@ -1217,6 +1296,10 @@ struct ContentView: View {
 
     private func runCreateContainer() {
         guard canCreateContainer, !isCreatingContainer else { return }
+        if createImageSource == .docker {
+            runCreateFromDocker()
+            return
+        }
 
         isCreatingContainer = true
         createErrorMessage = nil
@@ -1231,6 +1314,8 @@ struct ContentView: View {
             switch createImageSource {
             case .image:
                 image = createImage.trimmingCharacters(in: .whitespacesAndNewlines)
+            case .docker:
+                return // handled by runCreateFromDocker()
             case .dockerfile:
                 image = createBuildTag.trimmingCharacters(in: .whitespacesAndNewlines)
                 let built = await containerManager.buildImage(
@@ -1259,35 +1344,161 @@ struct ContentView: View {
                 createErrorMessage = message
                 containerManager.lastErrorMessage = nil
             } else {
-                let navigationId = containerManager.containers
-                    .first(where: { $0.id == createdId || $0.name == createdId })?.id
-                    ?? createdId
-                if createStartAfterCreation, let navigationId, !navigationId.isEmpty {
-                    await containerManager.startContainer(containerId: navigationId)
-                }
-                createImageSource = .image
-                createImage = ""
-                createBuildTag = ""
-                createDockerfilePath = ""
-                createBuildContextPath = ""
-                isCreateOptionsExpanded = false
-                containerManager.lastBuildOutput = nil
-                createName = ""
-                createPorts = ""
-                createHostPort = ""
-                createContainerPort = ""
-                createVolumes = ""
-                createHostPath = ""
-                createContainerPath = ""
-                createEnv = ""
-                createEnvKey = ""
-                createEnvValue = ""
-                createStartAfterCreation = true
-                showingCreateContainerSheet = false
-                if let navigationId, !navigationId.isEmpty {
-                    appNavigation.showContainer(id: navigationId, tab: 0)
+                await finishCreate(createdId: createdId)
+            }
+        }
+    }
+
+    /// Shared tail of every create flow: optionally start the new container,
+    /// reset the sheet, close it and navigate to the container.
+    private func finishCreate(createdId: String?) async {
+        let navigationId = containerManager.containers
+            .first(where: { $0.id == createdId || $0.name == createdId })?.id
+            ?? createdId
+        if createStartAfterCreation, let navigationId, !navigationId.isEmpty {
+            await containerManager.startContainer(containerId: navigationId)
+        }
+        resetCreateSheet()
+        showingCreateContainerSheet = false
+        if let navigationId, !navigationId.isEmpty {
+            appNavigation.showContainer(id: navigationId, tab: 0)
+        }
+    }
+
+    private func resetCreateSheet() {
+        createImageSource = .image
+        createImage = ""
+        createBuildTag = ""
+        createDockerfilePath = ""
+        createBuildContextPath = ""
+        isCreateOptionsExpanded = false
+        containerManager.lastBuildOutput = nil
+        createName = ""
+        createPorts = ""
+        createHostPort = ""
+        createContainerPort = ""
+        createVolumes = ""
+        createHostPath = ""
+        createContainerPath = ""
+        createEnv = ""
+        createEnvKey = ""
+        createEnvValue = ""
+        createStartAfterCreation = true
+        createDockerContainerID = nil
+        createDockerTranslation = nil
+        createDockerImageStrategy = .importFromDocker
+        createDockerLoadError = nil
+        createDockerProgress = nil
+    }
+
+    // MARK: - Create from a Docker container
+
+    /// Inspects the chosen Docker container, translates it and prefills the
+    /// editable fields (name, ports, volumes, env, image). Everything else the
+    /// translation carries (entrypoint, command, workdir, user, resources,
+    /// network, capabilities) is kept in `createDockerTranslation` and shown
+    /// read-only in the picker's summary.
+    private func loadDockerContainerConfiguration(id: String) {
+        createDockerContainerID = id
+        createDockerTranslation = nil
+        createDockerLoadError = nil
+        createErrorMessage = nil
+        isLoadingDockerConfig = true
+        Task {
+            guard let inspect = await dockerManager.inspectContainer(id: id) else {
+                createDockerLoadError = dockerManager.lastErrorMessage ?? "Could not inspect the Docker container."
+                dockerManager.lastErrorMessage = nil
+                isLoadingDockerConfig = false
+                return
+            }
+            var imageEnvironment: [String] = []
+            if let reference = inspect.imageReference {
+                imageEnvironment = await dockerManager.imageEnvironment(reference: reference)
+            }
+            let translation = DockerParsers.translate(inspect, imageEnvironment: imageEnvironment)
+            let spec = translation.spec
+            createDockerTranslation = translation
+            createImage = spec.image
+            createName = spec.name ?? ""
+            createPorts = spec.publishedPorts.joined(separator: ", ")
+            createVolumes = spec.volumes.joined(separator: ", ")
+            createEnv = spec.environment.joined(separator: ", ")
+            isCreateOptionsExpanded = !(spec.publishedPorts.isEmpty && spec.volumes.isEmpty && spec.environment.isEmpty)
+            await dockerManager.refreshImages()
+            createDockerImageStrategy = dockerManager.hasImage(reference: spec.image) ? .importFromDocker : .pullFromRegistry
+            isLoadingDockerConfig = false
+        }
+    }
+
+    private func runCreateFromDocker() {
+        guard let translation = createDockerTranslation else { return }
+        isCreatingContainer = true
+        createErrorMessage = nil
+        containerManager.lastErrorMessage = nil
+
+        var spec = translation.spec
+        spec.image = createImage.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = createName.trimmingCharacters(in: .whitespacesAndNewlines)
+        spec.name = name.isEmpty ? nil : name
+        spec.publishedPorts = parseList(createPorts)
+        spec.volumes = parseList(createVolumes)
+        spec.environment = parseList(createEnv)
+        let strategy = createDockerImageStrategy
+
+        Task {
+            defer {
+                isCreatingContainer = false
+                createDockerProgress = nil
+            }
+
+            if strategy == .importFromDocker {
+                createDockerProgress = "Exporting \(spec.image) from Docker…"
+                do {
+                    let outcome = try await dockerManager.saveImage(reference: spec.image, to: FileManager.default.temporaryDirectory)
+                    createDockerProgress = "Loading image into Apple Container…"
+                    let loaded = await containerManager.loadImage(fromArchive: outcome.archiveURL)
+                    try? FileManager.default.removeItem(at: outcome.archiveURL)
+                    guard let loaded else {
+                        createErrorMessage = containerManager.lastErrorMessage ?? "Image import failed."
+                        containerManager.lastErrorMessage = nil
+                        return
+                    }
+                    // Use the fully qualified reference the store reports, so
+                    // `create` resolves the imported image instead of pulling.
+                    if let loadedReference = loaded.first {
+                        spec.image = loadedReference
+                    }
+                } catch {
+                    createErrorMessage = error.localizedDescription
+                    return
                 }
             }
+
+            for volume in translation.volumesToCreate {
+                createDockerProgress = "Creating volume \(volume)…"
+                guard await containerManager.ensureVolumeExists(named: volume) else {
+                    createErrorMessage = containerManager.lastErrorMessage ?? "Could not create volume \(volume)."
+                    containerManager.lastErrorMessage = nil
+                    return
+                }
+            }
+            if let network = translation.networkToCreate {
+                createDockerProgress = "Creating network \(network)…"
+                guard await containerManager.ensureNetworkExists(named: network) else {
+                    createErrorMessage = containerManager.lastErrorMessage ?? "Could not create network \(network)."
+                    containerManager.lastErrorMessage = nil
+                    return
+                }
+            }
+
+            createDockerProgress = "Creating container…"
+            let createdId = await containerManager.createContainer(spec: spec)
+            if let message = containerManager.lastErrorMessage {
+                createErrorMessage = message
+                containerManager.lastErrorMessage = nil
+                return
+            }
+            await finishCreate(createdId: createdId)
         }
     }
 
