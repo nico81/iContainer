@@ -15,6 +15,7 @@ struct iContainerApp: App {
     @StateObject private var serviceManager = ServiceManager()
     @StateObject private var appNavigation = AppNavigation()
     @StateObject private var releaseChecker = ContainerReleaseChecker()
+    @StateObject private var dockerManager = DockerWrapper()
     @StateObject private var appReleaseChecker = AppReleaseChecker()
     @StateObject private var updater = UpdaterViewModel()
 
@@ -52,6 +53,7 @@ struct iContainerApp: App {
                 .environmentObject(appNavigation)
                 .environmentObject(releaseChecker)
                 .environmentObject(appReleaseChecker)
+                .environmentObject(dockerManager)
                 .preferredColorScheme(themeColorScheme)
                 .onAppear {
                     appQuitDelegate.serviceManager = serviceManager

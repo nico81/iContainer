@@ -117,6 +117,7 @@ final class SettingsManager: ObservableObject {
         static let terminalFontSize = "settings.terminalFontSize"
         static let forceBlackTerminal = "settings.forceBlackTerminal"
         static let customCliPath = "settings.customCliPath"
+        static let customDockerCliPath = "settings.customDockerCliPath"
         static let defaultRegistry = "settings.defaultRegistry"
         static let quitBehavior = "settings.quitBehavior"
         static let hideXPCNoiseInLogs = "settings.hideXPCNoiseInLogs"
@@ -145,6 +146,7 @@ final class SettingsManager: ObservableObject {
         static let terminalFontSize: Double = 12
         static let forceBlackTerminal = false
         static let customCliPath = ""
+        static let customDockerCliPath = ""
         static let defaultRegistry = "registry-1.docker.io"
         static let quitBehavior: QuitBehavior = .ask
         static let hideXPCNoiseInLogs = true
@@ -216,6 +218,10 @@ final class SettingsManager: ObservableObject {
         didSet { store.set(customCliPath, forKey: Keys.customCliPath) }
     }
 
+    @Published var customDockerCliPath: String {
+        didSet { store.set(customDockerCliPath, forKey: Keys.customDockerCliPath) }
+    }
+
     @Published var defaultRegistry: String {
         didSet { store.set(defaultRegistry, forKey: Keys.defaultRegistry) }
     }
@@ -270,6 +276,7 @@ final class SettingsManager: ObservableObject {
         _terminalFontSize = Published(initialValue: store.object(forKey: Keys.terminalFontSize) as? Double ?? Defaults.terminalFontSize)
         _forceBlackTerminal = Published(initialValue: store.object(forKey: Keys.forceBlackTerminal) as? Bool ?? Defaults.forceBlackTerminal)
         _customCliPath = Published(initialValue: store.string(forKey: Keys.customCliPath) ?? Defaults.customCliPath)
+        _customDockerCliPath = Published(initialValue: store.string(forKey: Keys.customDockerCliPath) ?? Defaults.customDockerCliPath)
         _defaultRegistry = Published(initialValue: store.string(forKey: Keys.defaultRegistry) ?? Defaults.defaultRegistry)
         _quitBehavior = Published(initialValue: (store.string(forKey: Keys.quitBehavior).flatMap(QuitBehavior.init(rawValue:))) ?? Defaults.quitBehavior)
         _hideXPCNoiseInLogs = Published(initialValue: store.object(forKey: Keys.hideXPCNoiseInLogs) as? Bool ?? Defaults.hideXPCNoiseInLogs)
@@ -295,7 +302,7 @@ final class SettingsManager: ObservableObject {
             Keys.notifyContainerStopped, Keys.notifyActionFailed, Keys.refreshIntervalSeconds,
             Keys.confirmStop, Keys.confirmDelete, Keys.confirmPrune, Keys.defaultShell,
             Keys.terminalFontName, Keys.terminalFontSize, Keys.forceBlackTerminal,
-            Keys.customCliPath, Keys.defaultRegistry, Keys.quitBehavior,
+            Keys.customCliPath, Keys.customDockerCliPath, Keys.defaultRegistry, Keys.quitBehavior,
             Keys.hideXPCNoiseInLogs, Keys.sidebarTinted,
             Keys.sidebarSectionOrder, Keys.containerStatusFilter, Keys.machineStatusFilter,
             Keys.containersExpanded, Keys.machinesExpanded, Keys.imagesExpanded
@@ -317,6 +324,7 @@ final class SettingsManager: ObservableObject {
         terminalFontSize = Defaults.terminalFontSize
         forceBlackTerminal = Defaults.forceBlackTerminal
         customCliPath = Defaults.customCliPath
+        customDockerCliPath = Defaults.customDockerCliPath
         defaultRegistry = Defaults.defaultRegistry
         quitBehavior = Defaults.quitBehavior
         hideXPCNoiseInLogs = Defaults.hideXPCNoiseInLogs
@@ -362,6 +370,47 @@ extension SettingsManager {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         return FileManager.default.isExecutableFile(atPath: trimmed) ? trimmed : nil
+    }
+
+    /// Custom `docker` CLI path from Settings, or `nil` when blank / not an
+    /// executable file.
+    nonisolated static func storedCustomDockerCLIPath() -> String? {
+        let raw = UserDefaults.standard.string(forKey: "settings.customDockerCliPath") ?? ""
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return FileManager.default.isExecutableFile(atPath: trimmed) ? trimmed : nil
+    }
+
+    /// Known `docker` CLI locations: Docker Desktop's symlink in
+    /// `/usr/local/bin` (and the bundle it points to), Homebrew, the
+    /// per-user `~/.docker/bin`, then `$PATH`. Deduplicated.
+    nonisolated static func dockerCLIPathCandidates(pathEnvironment: String? = ProcessInfo.processInfo.environment["PATH"]) -> [String] {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        var candidates: [String] = [
+            "/usr/local/bin/docker",
+            "/opt/homebrew/bin/docker",
+            "\(home)/.docker/bin/docker",
+            "/Applications/Docker.app/Contents/Resources/bin/docker"
+        ]
+        if let pathEnvironment {
+            for entry in pathEnvironment.split(separator: ":") {
+                candidates.append(String(entry) + "/docker")
+            }
+        }
+        var seen = Set<String>()
+        return candidates.filter { seen.insert($0).inserted }
+    }
+
+    /// Resolved `docker` CLI path: a valid Settings override wins, otherwise
+    /// the first installed candidate. Existence is checked live so
+    /// installing Docker is picked up without a restart. Unlike the
+    /// `container` CLI there is no version tiebreak — the Docker client
+    /// talks to whatever daemon the current context points at.
+    nonisolated static func resolvedDockerCLIPath() -> String? {
+        if let custom = storedCustomDockerCLIPath() {
+            return custom
+        }
+        return dockerCLIPathCandidates().first { FileManager.default.isExecutableFile(atPath: $0) }
     }
 
     /// Known `container` CLI locations to look in. Apple's official `.pkg`

@@ -269,6 +269,21 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            groupBox("Docker CLI") {
+                HStack {
+                    TextField("Path to the `docker` binary", text: $settings.customDockerCliPath)
+                        .textFieldStyle(.roundedBorder)
+                    Button("Browse…") {
+                        if let path = chooseFile(message: "Select the `docker` binary.") {
+                            settings.customDockerCliPath = path
+                        }
+                    }
+                }
+                Text("Used to import images and clone containers from a local Docker installation. Leave empty to search /usr/local/bin, /opt/homebrew/bin, ~/.docker/bin, Docker Desktop, and $PATH.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             groupBox("Registry") {
                 TextField("Default registry for pulls", text: $settings.defaultRegistry)
                     .textFieldStyle(.roundedBorder)
@@ -315,12 +330,12 @@ struct SettingsView: View {
         return filtered + [settings.terminalFontName]
     }
 
-    private func chooseFile() -> String? {
+    private func chooseFile(message: String = "Select the `container` binary.") -> String? {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        panel.message = "Select the `container` binary."
+        panel.message = message
         panel.prompt = "Choose"
         return panel.runModal() == .OK ? panel.url?.path : nil
     }

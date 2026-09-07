@@ -507,41 +507,26 @@ class ContainerizationWrapper: ObservableObject {
         volumes: [String] = [],
         environment: [String] = []
     ) async -> String? {
-        let trimmedImage = image.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedImage.isEmpty else {
+        await createContainer(spec: ContainerCreateSpec(
+            image: image,
+            name: name,
+            publishedPorts: publishedPorts,
+            volumes: volumes,
+            environment: environment
+        ))
+    }
+
+    /// Creates a container from a full `ContainerCreateSpec`. The flag
+    /// vocabulary lives in `ContainerCLIArguments.create` (unit-tested);
+    /// this is the only place that runs `container create`. Returns the new
+    /// container id, or `nil` with `lastErrorMessage` set.
+    func createContainer(spec: ContainerCreateSpec) async -> String? {
+        guard !spec.trimmedImage.isEmpty else {
             lastErrorMessage = "Image is required."
             return nil
         }
-
-        var args: [String] = ["create"]
         lastErrorMessage = nil
-
-        if let name, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            args += ["--name", name.trimmingCharacters(in: .whitespacesAndNewlines)]
-        }
-
-        for env in environment {
-            let value = env.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !value.isEmpty {
-                args += ["-e", value]
-            }
-        }
-
-        for port in publishedPorts {
-            let value = port.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !value.isEmpty {
-                args += ["-p", value]
-            }
-        }
-
-        for volume in volumes {
-            let value = volume.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !value.isEmpty {
-                args += ["-v", value]
-            }
-        }
-
-        args.append(trimmedImage)
+        let args = ContainerCLIArguments.create(spec)
 
         do {
             let output = try await runCommand(args)
@@ -1064,6 +1049,63 @@ class ContainerizationWrapper: ObservableObject {
         }
     }
 
+    // MARK: - Archive import & Docker interop helpers
+
+    /// `container image load -i <tar>` — imports an OCI-layout archive such
+    /// as the one `docker save` writes with the containerd image store.
+    /// Returns the loaded references (unnamed attestation manifests, printed
+    /// as `untagged@…`, are filtered out), or `nil` with `lastErrorMessage`
+    /// set. Loading a reference that already exists in the store re-points
+    /// that tag at the imported image — callers should confirm first (see
+    /// `hasImage(reference:)`).
+    func loadImage(fromArchive url: URL) async -> [String]? {
+        lastErrorMessage = nil
+        do {
+            let output = try await runCommand(["image", "load", "-i", url.path])
+            await refreshImages()
+            return DockerParsers.parseLoadedReferences(output)
+        } catch {
+            logger.error("Failed to load image archive: \(error)")
+            lastErrorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
+    /// `true` when the store already has an image with this reference,
+    /// compared in normalised short form (`docker.io/library/alpine:latest`
+    /// matches the list's `alpine:latest`).
+    func hasImage(reference: String) -> Bool {
+        let wanted = DockerParsers.normalizedReference(reference)
+        return images.contains { DockerParsers.normalizedReference($0.reference) == wanted }
+    }
+
+    /// Makes sure a named volume exists (inspect first, create if missing).
+    func ensureVolumeExists(named name: String) async -> Bool {
+        if (try? await runCommand(["volume", "inspect", name])) != nil { return true }
+        do {
+            _ = try await runCommand(["volume", "create", name])
+            return true
+        } catch {
+            logger.error("volume create failed for \(name): \(error)")
+            lastErrorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    /// Makes sure a user-defined network exists (inspect first, create if
+    /// missing).
+    func ensureNetworkExists(named name: String) async -> Bool {
+        if (try? await runCommand(["network", "inspect", name])) != nil { return true }
+        do {
+            _ = try await runCommand(["network", "create", name])
+            return true
+        } catch {
+            logger.error("network create failed for \(name): \(error)")
+            lastErrorMessage = error.localizedDescription
+            return false
+        }
+    }
+
     // MARK: - Compose (MVP)
     //
     // `ComposeParser` (a pure, unit-tested namespace like `CLIParsers`) turns
@@ -1133,19 +1175,17 @@ class ContainerizationWrapper: ObservableObject {
                 continue
             }
 
-            var args: [String] = ["create", "--name", containerName, "--network", networkName]
-            args += ["--label", "com.icontainer.compose.project=\(project)"]
-            for env in service.environment {
-                args += ["-e", env]
-            }
-            for port in service.ports {
-                args += ["-p", port]
-            }
-            for volume in service.volumes {
-                args += ["-v", volume]
-            }
-            args.append(image)
-            args += service.command
+            let spec = ContainerCreateSpec(
+                image: image,
+                name: containerName,
+                publishedPorts: service.ports,
+                volumes: service.volumes,
+                environment: service.environment,
+                command: service.command,
+                labels: ["com.icontainer.compose.project=\(project)"],
+                network: networkName
+            )
+            let args = ContainerCLIArguments.create(spec)
 
             do {
                 _ = try await runCommand(args)
