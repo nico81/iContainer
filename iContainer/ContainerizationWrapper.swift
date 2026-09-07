@@ -1252,9 +1252,16 @@ class ContainerizationWrapper: ObservableObject {
             }
         }
 
-        // Best-effort: the network may already be gone, or still be in use
-        // by a container this pass couldn't remove.
-        _ = try? await runCommand(["network", "delete", ComposeParser.networkName(forProject: project)])
+        // Best-effort with a short retry: right after `container delete` the
+        // service can still report the containers as attached for a moment,
+        // so an immediate `network delete` fails and the network lingers
+        // (seen on CLI 1.3.1). The network may also legitimately still be in
+        // use by a container this pass couldn't remove — then we give up.
+        let networkName = ComposeParser.networkName(forProject: project)
+        for attempt in 0..<4 {
+            if (try? await runCommand(["network", "delete", networkName])) != nil { break }
+            if attempt < 3 { try? await Task.sleep(nanoseconds: 750_000_000) }
+        }
 
         await refreshContainers()
         return allSucceeded
