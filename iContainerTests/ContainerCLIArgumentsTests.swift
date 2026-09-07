@@ -91,4 +91,11 @@ final class ContainerCLIArgumentsTests: XCTestCase {
         XCTAssertTrue(args.contains("--label") && args.contains("com.icontainer.compose.project=demo"))
         XCTAssertTrue(args.contains("-v") && args.contains("dbdata:/var/lib/postgresql/data"))
     }
+
+    func testDNSSearchDomainsFollowNetwork() {
+        var spec = ContainerCreateSpec(image: "img", name: "svc")
+        spec.network = "app-net"
+        spec.dnsSearchDomains = ["test", " "]
+        XCTAssertEqual(ContainerCLIArguments.create(spec), ["create", "--name", "svc", "--network", "app-net", "--dns-search", "test", "img"])
+    }
 }

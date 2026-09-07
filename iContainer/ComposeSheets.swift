@@ -34,6 +34,8 @@ struct ComposeSheet: View {
                         .truncationMode(.middle)
                 }
 
+                dnsStatusLine
+
                 if !parsed.ignoredDirectives.isEmpty {
                     ignoredDirectivesBox
                 }
@@ -75,6 +77,28 @@ struct ComposeSheet: View {
             .padding()
         }
         .frame(minWidth: 560, idealWidth: 640, maxWidth: .infinity, minHeight: 420, idealHeight: 560, maxHeight: .infinity)
+    }
+
+    /// Whether services will be able to find each other by name depends on
+    /// the container service having a DNS domain configured — surface that
+    /// up front instead of letting the user discover it from a failing app.
+    @ViewBuilder
+    private var dnsStatusLine: some View {
+        if let domain = containerManager.systemDNSDomain {
+            Label("Services reach each other by container name (\(projectName)-<service>, or <name>.\(domain)) through the service DNS domain \"\(domain)\". Compose service names alone (e.g. \"db\") are not aliased.", systemImage: "network")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        } else {
+            VStack(alignment: .leading, spacing: 4) {
+                Label("No DNS domain is configured for the container service — services can only reach each other by IP address.", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundColor(.orange)
+                Text("To enable names: add `[dns]` and `domain = \"test\"` to ~/.config/container/config.toml, restart the container service, then run `sudo container system dns create test` once.")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .textSelection(.enabled)
+            }
+        }
     }
 
     private var ignoredDirectivesBox: some View {

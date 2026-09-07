@@ -26,6 +26,16 @@ class ContainerizationWrapper: ObservableObject {
     @Published var lastErrorMessage: String?
     @Published var lastBuildOutput: String?
     @Published var registryAuthState: RegistryAuthState = .unknown
+    /// DNS domain the container service registers container names under
+    /// (`[dns] domain = "…"` in `~/.config/container/config.toml`), refreshed
+    /// on every poll. `nil` when unset — containers then only reach each
+    /// other by IP. With a domain, `<name>.<domain>` resolves from every
+    /// container and from the host, and bare `<name>` resolves too (the
+    /// service writes `domain <domain>` into resolv.conf) — verified on
+    /// 1.3.1 for both the default and user-created networks. We still pass
+    /// `--dns-search <domain>` (see `ContainerCreateSpec`) as belt and
+    /// braces for CLI versions that follow the documented limitation.
+    @Published private(set) var systemDNSDomain: String?
     /// Background-collected resource history per container. Kept as its own
     /// `ObservableObject` so per-tick stats samples don't re-render every
     /// view that observes this wrapper. See `ContainerStatsStore`.
@@ -80,6 +90,18 @@ class ContainerizationWrapper: ObservableObject {
         await refreshImages()
         await refreshMachines()
         await refreshRegistryAuthStatus()
+        await refreshSystemDNSDomain()
+    }
+
+    /// Reads `[dns] domain` from `container system property list`.
+    func refreshSystemDNSDomain() async {
+        do {
+            let output = try await runCommand(["system", "property", "list"])
+            let domain = CLIParsers.systemDNSDomain(from: output)
+            if systemDNSDomain != domain { systemDNSDomain = domain }
+        } catch {
+            // Service stopped or property command unavailable: keep the last value.
+        }
     }
 
     // MARK: - Stats sampling
@@ -1175,6 +1197,8 @@ class ContainerizationWrapper: ObservableObject {
                 continue
             }
 
+            // With a service DNS domain, containers resolve each other as
+            // `<project>-<service>`; `--dns-search` is belt and braces.
             let spec = ContainerCreateSpec(
                 image: image,
                 name: containerName,
@@ -1183,7 +1207,8 @@ class ContainerizationWrapper: ObservableObject {
                 environment: service.environment,
                 command: service.command,
                 labels: ["com.icontainer.compose.project=\(project)"],
-                network: networkName
+                network: networkName,
+                dnsSearchDomains: systemDNSDomain.map { [$0] } ?? []
             )
             let args = ContainerCLIArguments.create(spec)
 

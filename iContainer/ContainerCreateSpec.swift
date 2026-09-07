@@ -30,6 +30,12 @@ nonisolated struct ContainerCreateSpec: Equatable, Sendable {
     /// `key=value`
     var labels: [String] = []
     var network: String? = nil
+    /// Search domains written to the container's resolv.conf (`--dns-search`).
+    /// Set to the service's DNS domain so a bare container name resolves as
+    /// `<name>.<domain>` even on CLI versions that don't add the domain to
+    /// resolv.conf themselves (1.3.1 does; older docs say user networks
+    /// only answer the qualified form).
+    var dnsSearchDomains: [String] = []
     var capabilitiesToAdd: [String] = []
     var capabilitiesToDrop: [String] = []
     var tmpfsPaths: [String] = []
@@ -49,6 +55,7 @@ nonisolated enum ContainerCLIArguments {
         var args: [String] = ["create"]
         if let name = clean(spec.name) { args += ["--name", name] }
         if let network = clean(spec.network) { args += ["--network", network] }
+        for domain in spec.dnsSearchDomains.compactMap(clean) { args += ["--dns-search", domain] }
         for label in spec.labels.compactMap(clean) { args += ["--label", label] }
         for env in spec.environment.compactMap(clean) { args += ["-e", env] }
         for port in spec.publishedPorts.compactMap(clean) { args += ["-p", port] }

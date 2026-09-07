@@ -496,3 +496,47 @@ nonisolated enum CLIParsers {
         return nil
     }
 }
+
+// MARK: - System properties (`container system property list`)
+
+nonisolated extension CLIParsers {
+    /// Parses the TOML-like output of `container system property list`
+    /// into `[section: [key: value]]`. Values keep their raw text with one
+    /// layer of surrounding quotes stripped (`"test"` → `test`). Sections
+    /// with no keys are present with an empty dictionary, e.g. `[dns]`
+    /// when no DNS domain is configured.
+    static func parseSystemProperties(_ output: String) -> [String: [String: String]] {
+        var result: [String: [String: String]] = [:]
+        var section: String?
+        for rawLine in output.components(separatedBy: .newlines) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            guard !line.isEmpty, !line.hasPrefix("#") else { continue }
+            if line.hasPrefix("["), line.hasSuffix("]") {
+                let name = String(line.dropFirst().dropLast()).trimmingCharacters(in: .whitespaces)
+                section = name
+                if result[name] == nil { result[name] = [:] }
+                continue
+            }
+            guard let section, let eq = line.firstIndex(of: "=") else { continue }
+            let key = String(line[..<eq]).trimmingCharacters(in: .whitespaces)
+            var value = String(line[line.index(after: eq)...]).trimmingCharacters(in: .whitespaces)
+            if value.count >= 2,
+               (value.hasPrefix("\"") && value.hasSuffix("\"")) || (value.hasPrefix("'") && value.hasSuffix("'")) {
+                value = String(value.dropFirst().dropLast())
+            }
+            guard !key.isEmpty else { continue }
+            result[section, default: [:]][key] = value
+        }
+        return result
+    }
+
+    /// The DNS domain the container service registers container names under
+    /// (`[dns] domain = "test"` in `~/.config/container/config.toml`), or
+    /// `nil` when none is configured — in which case containers can only
+    /// reach each other by IP.
+    static func systemDNSDomain(from output: String) -> String? {
+        let domain = parseSystemProperties(output)["dns"]?["domain"]?.trimmingCharacters(in: .whitespaces)
+        guard let domain, !domain.isEmpty else { return nil }
+        return domain
+    }
+}

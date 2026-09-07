@@ -7,6 +7,7 @@ import SwiftUI
 /// by the owner through `onSelect`.
 struct DockerContainerPickerView: View {
     @EnvironmentObject var dockerManager: DockerWrapper
+    @EnvironmentObject var containerManager: ContainerizationWrapper
     @Binding var selectedContainerID: String?
     let translation: DockerTranslation?
     let isLoading: Bool
@@ -38,6 +39,7 @@ struct DockerContainerPickerView: View {
                 }
                 if let translation {
                     summary(translation)
+                    dnsNote(translation)
                     if !translation.warnings.isEmpty {
                         warningsBox(translation.warnings)
                     }
@@ -97,6 +99,28 @@ struct DockerContainerPickerView: View {
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: AppRadius.small))
+    }
+
+    /// Docker containers usually talk to each other by name; say whether
+    /// that will keep working in Apple Container.
+    @ViewBuilder
+    private func dnsNote(_ translation: DockerTranslation) -> some View {
+        let name = translation.spec.name ?? "<name>"
+        if let domain = containerManager.systemDNSDomain {
+            Label("Other containers can reach this one as \(name) or \(name).\(domain) through the service DNS domain \"\(domain)\".", systemImage: "network")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        } else {
+            VStack(alignment: .leading, spacing: 4) {
+                Label("No DNS domain is configured for the container service — other containers can only reach this one by IP address.", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundColor(.orange)
+                Text("To enable names: add `[dns]` and `domain = \"test\"` to ~/.config/container/config.toml, restart the container service, then run `sudo container system dns create test` once.")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .textSelection(.enabled)
+            }
+        }
     }
 
     private func line(_ label: String, _ value: String) -> some View {

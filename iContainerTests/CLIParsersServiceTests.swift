@@ -136,4 +136,42 @@ final class CLIParsersServiceTests: XCTestCase {
         let lines = (1...500).map { "L\($0)" }.joined(separator: "\n")
         XCTAssertEqual(CLIParsers.limitedLogOutput(lines, maxLines: 500), lines)
     }
+
+    // MARK: - system property list
+
+    func testParseSystemPropertiesSectionsAndValues() {
+        let output = """
+
+        [build]
+        cpus = 2
+        image = "ghcr.io/apple/container-builder-shim/builder:0.13.1"
+        memory = "2048mb"
+        rosetta = true
+
+        [container]
+        cpus = 4
+        memory = "1gb"
+
+        [dns]
+        """
+        let props = CLIParsers.parseSystemProperties(output)
+        XCTAssertEqual(props["build"]?["cpus"], "2")
+        XCTAssertEqual(props["build"]?["image"], "ghcr.io/apple/container-builder-shim/builder:0.13.1")
+        XCTAssertEqual(props["container"]?["memory"], "1gb")
+        XCTAssertEqual(props["dns"], [:], "empty section is present but has no keys")
+        XCTAssertNil(CLIParsers.systemDNSDomain(from: output))
+    }
+
+    func testSystemDNSDomainWhenConfigured() {
+        let output = """
+        [container]
+        cpus = 4
+
+        [dns]
+        domain = "test"
+        """
+        XCTAssertEqual(CLIParsers.systemDNSDomain(from: output), "test")
+        XCTAssertNil(CLIParsers.systemDNSDomain(from: ""))
+        XCTAssertNil(CLIParsers.systemDNSDomain(from: "[dns]\ndomain = \"\""))
+    }
 }

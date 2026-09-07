@@ -1443,6 +1443,9 @@ struct ContentView: View {
         spec.publishedPorts = parseList(createPorts)
         spec.volumes = parseList(createVolumes)
         spec.environment = parseList(createEnv)
+        if let domain = containerManager.systemDNSDomain {
+            spec.dnsSearchDomains = [domain]
+        }
         let strategy = createDockerImageStrategy
 
         Task {
