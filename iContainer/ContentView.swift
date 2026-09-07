@@ -77,6 +77,11 @@ struct ContentView: View {
     @State private var showingCreateMachineSheet = false
     @State private var showingEditMachineSheet = false
     @State private var editingMachineId: String?
+    @State private var showingComposeSheet = false
+    @State private var composeFileURL: URL?
+    @State private var composeParsedFile: ParsedComposeFile?
+    @State private var showingComposeOpenError = false
+    @State private var composeOpenErrorMessage = ""
     @State private var showingPullImageAlert = false
     @State private var pullImageReference = ""
     @State private var isPullingImage = false
@@ -250,6 +255,14 @@ struct ContentView: View {
             if let machineId = editingMachineId {
                 EditMachineConfigSheet(machineId: machineId)
             }
+        }
+        .sheet(isPresented: $showingComposeSheet) {
+            composeSheetContent
+        }
+        .alert("Cannot Open Compose File", isPresented: $showingComposeOpenError) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(composeOpenErrorMessage)
         }
         .alert("Pull Image", isPresented: $showingPullImageAlert) {
             TextField("repository:tag", text: $pullImageReference)
@@ -817,6 +830,12 @@ struct ContentView: View {
                     } label: {
                         Label("New Machine…", systemImage: "cpu")
                     }
+                    Divider()
+                    Button {
+                        openComposeFile()
+                    } label: {
+                        Label("Open Compose File…", systemImage: "square.stack.3d.up")
+                    }
                 } label: {
                     Image(systemName: "plus")
                 }
@@ -1275,6 +1294,46 @@ struct ContentView: View {
     private func openEditMachineSheet(machineId: String) {
         editingMachineId = machineId
         showingEditMachineSheet = true
+    }
+
+    // MARK: - Compose (MVP)
+
+    @ViewBuilder
+    private var composeSheetContent: some View {
+        if let url = composeFileURL, let parsed = composeParsedFile {
+            ComposeSheet(fileURL: url, parsed: parsed, onClose: { showingComposeSheet = false })
+        }
+    }
+
+    /// Entry point for the compose MVP: pick a `compose.yaml` /
+    /// `compose.yml` / `docker-compose.yml`, parse it with the pure
+    /// `ComposeParser`, and present the review sheet. Parsing never touches
+    /// the CLI, so this works even if `container` isn't running yet — only
+    /// pressing "Up" in the sheet does.
+    private func openComposeFile() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = false
+        panel.prompt = "Open"
+        panel.message = "Choose a compose file (compose.yaml, compose.yml, or docker-compose.yml)."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        guard let contents = try? String(contentsOf: url, encoding: .utf8) else {
+            composeOpenErrorMessage = "Could not read \"\(url.lastPathComponent)\"."
+            showingComposeOpenError = true
+            return
+        }
+        guard let parsed = ComposeParser.parse(contents) else {
+            composeOpenErrorMessage = "\"\(url.lastPathComponent)\" doesn't look like a compose file — no 'services:' section was found."
+            showingComposeOpenError = true
+            return
+        }
+
+        composeFileURL = url
+        composeParsedFile = parsed
+        showingComposeSheet = true
     }
 
     private func openEditContainerSheet(containerId: String) {

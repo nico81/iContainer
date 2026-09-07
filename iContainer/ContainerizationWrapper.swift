@@ -1063,6 +1063,137 @@ class ContainerizationWrapper: ObservableObject {
             return nil
         }
     }
+
+    // MARK: - Compose (MVP)
+    //
+    // `ComposeParser` (a pure, unit-tested namespace like `CLIParsers`) turns
+    // a compose file into `[ComposeService]`. This section is the thin,
+    // side-effecting layer that maps each service onto the same `container
+    // create` / `run` flags used by `createContainer` above, and gives every
+    // service in a project a shared network so they can reach each other by
+    // container name — Apple's `container` CLI does DNS resolution by
+    // hostname on a network, mirroring what compose calls "service
+    // discovery". Verified empirically against `container` CLI 1.1.0 before
+    // wiring: `container network create <name>` / `network delete <name>`
+    // both exist and work, so a real per-project network is created rather
+    // than falling back to the builtin `default` one.
+
+    /// One service's outcome from `composeUp`.
+    struct ComposeServiceOutcome: Identifiable, Equatable {
+        var id: String { service }
+        let service: String
+        let containerName: String
+        let succeeded: Bool
+        /// Present when `succeeded` is false, or when the service was
+        /// skipped outright (e.g. no image) rather than attempted.
+        let detail: String?
+    }
+
+    /// Brings every runnable service in `parsedFile` up, in `depends_on`
+    /// order, tagged with `project`. Never throws: per-service failures are
+    /// reported in the returned outcomes so one bad service doesn't stop the
+    /// rest of the project from starting, matching the MVP's "warn, don't
+    /// fail" stance on things it can't fully support.
+    func composeUp(parsedFile: ParsedComposeFile, project: String) async -> [ComposeServiceOutcome] {
+        lastErrorMessage = nil
+        await refreshContainers()
+
+        let networkName = ComposeParser.networkName(forProject: project)
+        // Best-effort: succeeds the first time, fails with "already exists"
+        // on a repeat Up (or if creation is unsupported for some reason) —
+        // either way the per-service --network flag below is what actually
+        // matters, and its own error (if any) surfaces per service.
+        _ = try? await runCommand(["network", "create", networkName])
+
+        var outcomes: [ComposeServiceOutcome] = []
+        for service in ComposeParser.topologicalOrder(parsedFile.services) {
+            let containerName = service.resolvedContainerName(project: project)
+
+            guard let image = service.image?.trimmingCharacters(in: .whitespacesAndNewlines), !image.isEmpty else {
+                outcomes.append(ComposeServiceOutcome(
+                    service: service.name,
+                    containerName: containerName,
+                    succeeded: false,
+                    detail: "no image specified"
+                ))
+                continue
+            }
+
+            // Idempotent Up: if a container from a previous Up is still
+            // around, (re)start it instead of failing on "name already in use".
+            if let existing = containers.first(where: { $0.name == containerName }) {
+                do {
+                    if existing.status != .running {
+                        _ = try await runCommand(["start", existing.id])
+                    }
+                    outcomes.append(ComposeServiceOutcome(service: service.name, containerName: containerName, succeeded: true, detail: nil))
+                } catch {
+                    outcomes.append(ComposeServiceOutcome(service: service.name, containerName: containerName, succeeded: false, detail: error.localizedDescription))
+                }
+                continue
+            }
+
+            var args: [String] = ["create", "--name", containerName, "--network", networkName]
+            args += ["--label", "com.icontainer.compose.project=\(project)"]
+            for env in service.environment {
+                args += ["-e", env]
+            }
+            for port in service.ports {
+                args += ["-p", port]
+            }
+            for volume in service.volumes {
+                args += ["-v", volume]
+            }
+            args.append(image)
+            args += service.command
+
+            do {
+                _ = try await runCommand(args)
+                _ = try await runCommand(["start", containerName])
+                outcomes.append(ComposeServiceOutcome(service: service.name, containerName: containerName, succeeded: true, detail: nil))
+            } catch {
+                logger.error("compose up failed for \(containerName): \(error)")
+                outcomes.append(ComposeServiceOutcome(service: service.name, containerName: containerName, succeeded: false, detail: error.localizedDescription))
+            }
+        }
+
+        await refreshContainers()
+        return outcomes
+    }
+
+    /// Stops and removes every container belonging to `project`, then drops
+    /// its shared network. Matches containers by the `<project>-<service>`
+    /// naming convention `composeUp` uses; a service that overrode its name
+    /// with `container_name` won't be picked up here — a known MVP
+    /// limitation (see the compose feature notes).
+    func composeDown(project: String) async -> Bool {
+        lastErrorMessage = nil
+        await refreshContainers()
+
+        let prefix = "\(project)-"
+        let targets = containers.filter { $0.name.hasPrefix(prefix) }
+        var allSucceeded = true
+
+        for container in targets {
+            do {
+                if container.status == .running {
+                    _ = try await runCommand(["stop", container.id])
+                }
+                _ = try await runCommand(["delete", container.id])
+            } catch {
+                logger.error("compose down failed for \(container.name): \(error)")
+                lastErrorMessage = error.localizedDescription
+                allSucceeded = false
+            }
+        }
+
+        // Best-effort: the network may already be gone, or still be in use
+        // by a container this pass couldn't remove.
+        _ = try? await runCommand(["network", "delete", ComposeParser.networkName(forProject: project)])
+
+        await refreshContainers()
+        return allSucceeded
+    }
 }
 
 private extension ContainerizationWrapper {

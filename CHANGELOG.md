@@ -7,6 +7,16 @@ The format follows Keep a Changelog, and versions use semantic versioning:
 
 ## [Unreleased]
 
+### Added
+- **Docker Compose (MVP)** — *Open Compose File…* (toolbar `+` menu) parses a
+  `compose.yaml` / `docker-compose.yml` with a dependency-free pure parser
+  (`ComposeParser`), shows the services it can run and the directives it had
+  to ignore, then drives *Up* / *Down*: containers are named
+  `<project>-<service>`, share a per-project network, and start in
+  `depends_on` order. Unsupported directives (`build`, `healthcheck`,
+  `restart`, `deploy`, named volumes, custom networks…) are reported, not
+  fatal.
+
 ## [2.2.1] - 2026-07-18
 
 ### Fixed

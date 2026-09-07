@@ -39,6 +39,9 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
 - `iContainer/SheetEditors.swift`: shared editors used by the create and
   edit sheets (`MappingPairsEditor`, `EnvironmentVariablesEditor`,
   `MappingRow`, `PathPickerRow`, etc).
+- `iContainer/ComposeSheets.swift`: `ComposeSheet` — review + Up/Down UI
+  for a parsed compose file (project name derived from the file's parent
+  directory).
 - `iContainer/WindowResizeConfigurator.swift`: `NSViewRepresentable` that
   makes sheets resizable with a minimum size.
 - `iContainer/ViewExtensions.swift`: `View.applyIf` for conditional
@@ -70,6 +73,13 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
 - `iContainer/CLIParsers.swift`: single namespace holding every pure
   parser used to read `container` CLI output. Side-effect free and
   exhaustively unit-tested.
+- `iContainer/ComposeParser.swift`: pure, dependency-free parser for the
+  compose-file subset the `container` CLI can map (`image`,
+  `container_name`, `ports`, `environment`, `volumes`, `command`,
+  `depends_on`) plus `topologicalOrder`, `sanitizedProjectName`,
+  `networkName(forProject:)`. Unsupported directives are collected in
+  `ParsedComposeFile.ignoredDirectives`, never fatal. `composeUp` /
+  `composeDown` in `ContainerizationWrapper` are the side-effecting half.
 - `iContainer/ContainerStatsStore.swift`: standalone `ObservableObject`
   holding rolling per-container resource history (CPU/memory/network),
   kept off the wrapper so frequent stats mutations don't re-render the
