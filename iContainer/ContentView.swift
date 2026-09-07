@@ -1289,6 +1289,10 @@ struct ContentView: View {
     /// at `create` time — after a possibly long image import in the Docker
     /// flow. Check up front against the live container list instead.
     private var createNameConflict: Bool {
+        // While a create is in flight the new container already shows up in
+        // the live list (the wrapper refreshes right after `create`), so the
+        // name we are creating would flash as a duplicate. Suspend the check.
+        guard !isCreatingContainer else { return false }
         let name = trimmedCreateName
         guard !name.isEmpty else { return false }
         return containerManager.containers.contains { $0.name == name || $0.id == name }
