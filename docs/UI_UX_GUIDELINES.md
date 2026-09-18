@@ -300,6 +300,13 @@ Keep iContainer clear, predictable, and fast for container operations, with mini
 - Show volumes as "<used> used of <capacity>" — capacity alone (the
   provisioned maximum of the sparse image, 512 GB for anonymous ones) reads
   as disk used and alarms people. Use base-2 units for both.
+- Volume state has three values and the badge colours follow them:
+  **mounted** (a running container uses it — green, like *running*),
+  **attached** (only stopped containers reference it — neutral grey; the
+  CLI still locks it, so no delete and no browsing until the container
+  starts), **unused** (grey). Never reuse the red "stopped" colour for
+  states that aren't a problem; `StatusBadge(status:tint:)` takes an
+  explicit tint for non-lifecycle labels (*anonymous*, *builtin*).
 - Give contents prominence: the volume page is tabbed *Info / Contents*
   (same `AccentTabPicker` as containers), and a container that mounts
   named volumes gains a *Volumes* tab (index 4, after Logs, so ⌘1–⌘4 keep

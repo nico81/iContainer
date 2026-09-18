@@ -73,9 +73,14 @@ struct DetailRow: View {
 /// the container name in the header.
 struct StatusBadge: View {
     let status: String
+    /// Explicit colour for states that aren't running/stopped. Without it
+    /// the badge is green for "running" and red for everything else, which
+    /// is right for lifecycle states only.
+    var tint: Color? = nil
 
     var color: Color {
-        status.lowercased() == "running" ? .green : .red
+        if let tint { return tint }
+        return status.lowercased() == "running" ? .green : .red
     }
 
     var body: some View {

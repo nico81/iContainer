@@ -114,10 +114,13 @@ struct VolumeRowView: View {
     private var users: [Container] { containerManager.containers(usingVolume: volume.name) }
 
     private var usersText: String {
-        switch users.count {
-        case 0: return volume.isAnonymous ? "orphaned — no container uses it" : "not mounted"
-        case 1: return "mounted by \(users[0].name)"
-        default: return "mounted by \(users.count) containers"
+        switch containerManager.volumeUsage(volume) {
+        case .mounted(let running):
+            return running.count == 1 ? "mounted by \(running[0].name)" : "mounted by \(running.count) containers"
+        case .attached(let stopped):
+            return stopped.count == 1 ? "attached to \(stopped[0].name) (stopped)" : "attached to \(stopped.count) stopped containers"
+        case .unused:
+            return volume.isAnonymous ? "orphaned — no container uses it" : "unused"
         }
     }
 
@@ -163,7 +166,7 @@ struct VolumeRowView: View {
                         .actionButtonStyle(circular: true)
                         .controlSize(.small)
                         .disabled(!users.isEmpty)
-                        .help(users.isEmpty ? "Delete volume" : "Mounted by \(users.map(\.name).joined(separator: ", "))")
+                        .help(users.isEmpty ? "Delete volume" : "In use by \(users.map(\.name).joined(separator: ", ")) — the CLI locks a volume while any container references it, even a stopped one")
                     }
                 }
             }
@@ -230,7 +233,7 @@ struct NetworkDetailView: View {
                             Text(network.name).font(.largeTitle).fontWeight(.bold)
                             Spacer()
                             if network.isBuiltin {
-                                StatusBadge(status: "builtin")
+                                StatusBadge(status: "builtin", tint: .secondary)
                             }
                         }
                         Text("Network").font(.caption).foregroundColor(.secondary)
@@ -373,10 +376,23 @@ struct VolumeDetailView: View {
                 Text(volume.name).font(.largeTitle).fontWeight(.bold)
                     .lineLimit(1).truncationMode(.middle)
                 Spacer()
-                if volume.isAnonymous { StatusBadge(status: "anonymous") }
-                StatusBadge(status: users.isEmpty ? "unmounted" : "mounted")
+                if volume.isAnonymous { StatusBadge(status: "anonymous", tint: .secondary) }
+                usageBadge
             }
             Text("Volume · \(volume.displayUsage)").font(.caption).foregroundColor(.secondary)
+        }
+    }
+
+    /// mounted = green (live, like a running container); attached / unused
+    /// are neutral — neither is a problem state.
+    @ViewBuilder
+    private var usageBadge: some View {
+        if let volume {
+            switch containerManager.volumeUsage(volume) {
+            case .mounted: StatusBadge(status: "mounted", tint: .green)
+            case .attached: StatusBadge(status: "attached", tint: .secondary)
+            case .unused: StatusBadge(status: "unused", tint: .secondary)
+            }
         }
     }
 
@@ -386,9 +402,7 @@ struct VolumeDetailView: View {
                 header(volume)
 
                 DetailSection(title: "Configuration", icon: "internaldrive") {
-                    DetailRow(label: "Contents", value: users.isEmpty
-                              ? (volume.displayContents.map { $0 == "empty" ? "Empty filesystem — nothing was ever written to it" : $0 } ?? "-")
-                              : "Mounted — see the Contents tab for a live view")
+                    DetailRow(label: "Contents", value: contentsSummary(volume))
                     DetailRow(label: "Used on disk", value: volume.displayAllocated ?? "-")
                     DetailRow(label: "Capacity", value: volume.displayCapacity)
                     DetailRow(label: "Driver", value: volume.driver ?? "-")
@@ -461,13 +475,24 @@ struct VolumeDetailView: View {
                         Label("Delete Volume", systemImage: "trash")
                     }
                     .disabled(!users.isEmpty || containerManager.updatingVolumeIDs.contains(volume.name))
-                    .help(users.isEmpty ? "" : "Delete the containers that mount it first.")
+                    .help(users.isEmpty ? "" : "Delete the containers that reference it first — the CLI locks a volume while any container, even a stopped one, references it.")
                     Spacer()
                 }
                 Text("Mount it in a new container as `\(volume.name):/path`. The data lives only inside the ext4 image, so the way to read it is from a container.")
                     .font(.caption2).foregroundColor(.secondary)
             }
             .padding()
+        }
+    }
+
+    private func contentsSummary(_ volume: ContainerVolume) -> String {
+        switch containerManager.volumeUsage(volume) {
+        case .mounted:
+            return "Mounted — see the Contents tab for a live view"
+        case .attached(let stopped):
+            return "Attached to the stopped container \(stopped.map(\.name).joined(separator: ", ")) — start it to browse"
+        case .unused:
+            return volume.displayContents.map { $0 == "empty" ? "Empty filesystem — nothing was ever written to it" : $0 } ?? "-"
         }
     }
 
@@ -739,9 +764,12 @@ struct VolumeContentsBrowser: View {
             if isLoading && entries.isEmpty {
                 HStack(spacing: 8) {
                     ProgressView().scaleEffect(0.7)
-                    Text(source == nil && containerManager.containers(usingVolume: volume.name).allSatisfy { $0.status != .running }
-                         ? "Starting a temporary container to read the volume…"
-                         : "Reading…")
+                    Text({
+                        switch containerManager.volumeUsage(volume) {
+                        case .unused: return "Starting a temporary container to read the volume…"
+                        default: return "Reading…"
+                        }
+                    }())
                         .font(.caption).foregroundColor(.secondary)
                 }
             } else if let errorMessage {

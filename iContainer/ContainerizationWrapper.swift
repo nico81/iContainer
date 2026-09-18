@@ -167,6 +167,33 @@ class ContainerizationWrapper: ObservableObject {
         !containers(usingVolume: volume.name).isEmpty
     }
 
+    /// How a volume is being used right now. The CLI locks a volume for as
+    /// long as *any* container references it — even a stopped one — so
+    /// "attached" volumes can't be deleted or read by a helper container.
+    enum VolumeUsage: Equatable {
+        /// A running container has it mounted (live filesystem).
+        case mounted(by: [Container])
+        /// Only stopped containers reference it.
+        case attached(to: [Container])
+        case unused
+
+        var label: String {
+            switch self {
+            case .mounted: return "mounted"
+            case .attached: return "attached"
+            case .unused: return "unused"
+            }
+        }
+    }
+
+    func volumeUsage(_ volume: ContainerVolume) -> VolumeUsage {
+        let users = containers(usingVolume: volume.name)
+        let running = users.filter { $0.status == .running }
+        if !running.isEmpty { return .mounted(by: running) }
+        if !users.isEmpty { return .attached(to: users) }
+        return .unused
+    }
+
     /// How a volume listing was obtained.
     enum VolumeListingSource: Equatable {
         /// `container exec` inside a running container that mounts the volume.
@@ -188,6 +215,14 @@ class ContainerizationWrapper: ObservableObject {
             let full = relative.isEmpty ? mount.destination : mount.destination + "/" + relative
             let output = try await runCommand(["exec", host.id, "ls", "-lA", full])
             return (CLIParsers.parseDirectoryListing(output), .runningContainer(host.name))
+        }
+        // Referenced by stopped containers only: the CLI won't let another
+        // container mount it, so there is no way to read it right now.
+        let stoppedUsers = containers(usingVolume: volume.name)
+        if !stoppedUsers.isEmpty {
+            let names = stoppedUsers.map(\.name).joined(separator: ", ")
+            throw NSError(domain: "iContainer", code: 4, userInfo: [NSLocalizedDescriptionKey:
+                "The volume is attached to the stopped container \(names). Start it to browse the contents."])
         }
         let image = Self.helperImage(from: images)
         let full = relative.isEmpty ? "/__vol" : "/__vol/" + relative
