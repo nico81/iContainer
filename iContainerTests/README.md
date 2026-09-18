@@ -13,10 +13,11 @@ spawning a process, touching the network, or hitting the filesystem.
 | `CLIParsersServiceTests.swift` | `parseServiceDetails`, `limitedLogOutput`, `parseSystemProperties` / `systemDNSDomain` |
 | `ComposeParserTests.swift` | `ComposeParser` (compose-file subset, ordering, unsupported directives) |
 | `ContainerCLIArgumentsTests.swift` | `ContainerCreateSpec` → `container create` flag builder |
+| `ContainerInspectFallbackTests.swift` | `parseContainerInspect` on real 1.4.1 inspect output (stopped + running), mount kinds, labels/caps, date helpers |
 | `NetworkVolumeParserTests.swift` | `parseNetworkList`, `parseVolumeList`, `parseContainerAttachments` (real 1.4.1 JSON) |
 | `DockerParsersTests.swift` (+ `DockerFixtures.swift`) | Docker `images`/`ps` NDJSON, `inspect`, Docker → `container` translation rules, reference normalisation, `image load` output |
 
-About **137 test cases** in total.
+About **145 test cases** in total.
 
 ## Setup
 

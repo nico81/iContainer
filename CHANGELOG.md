@@ -30,6 +30,12 @@ The format follows Keep a Changelog, and versions use semantic versioning:
   containers can join a user-defined network instead of always landing on
   `default`; the service DNS domain is passed as search domain so they
   resolve each other by name.
+- **Container Info catches up with CLI 1.x.** The Info tab now shows the
+  creation date (the CLI renamed the field, so it had gone missing),
+  *Started* with uptime for running containers, the process user, image
+  digest, stop signal, init / nested-virtualization flags, capabilities,
+  sysctls, labels, the network name (click to open it) and MTU. Mounts
+  distinguish named volumes (click to open), host paths and tmpfs.
 - **Service Info for container CLI 1.4.** The Info tab now shows Service
   and CLI versions separately (with a warning when the CLI was upgraded but
   the service not yet restarted), the host (macOS build, architecture,

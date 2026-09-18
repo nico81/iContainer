@@ -259,7 +259,14 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
 - `iContainer/ContainerLogsView.swift`: Logs tab with delta polling.
   A single "Follow" toggle drives both polling and auto-scroll.
 - `iContainer/ContainerInspectFallback.swift`: untyped-dictionary inspect
-  parser for fields that the typed `Decodable` does not cover.
+  parser for fields that the typed `Decodable` does not cover. CLI ≥ 1.x
+  fields: `configuration.creationDate` (not `created`), `status.startedDate`,
+  `labels`, `initProcess.user` (`id.uid/gid` or `raw.userString`),
+  `stopSignal`, `capAdd/capDrop`, `sysctls`, `useInit`, `virtualization`,
+  `image.descriptor.digest`, network name + `mtu`, mount `type` object
+  (`volume{name}` / `virtiofs` / `tmpfs`). Tested on real 1.4.1 output in
+  `ContainerInspectFallbackTests`. `AppNavigation.showNetwork/showVolume`
+  let the Info tab jump to the Networks / Volumes detail pages.
 - `iContainer/DetailRowComponents.swift`: `DetailSection`, `DetailRow`,
   `StatusBadge`, `InfoTextStyle`. Shared chrome across the four tabs.
 

@@ -357,6 +357,14 @@ struct ContentView: View {
         .onReceive(appNavigation.$containerTarget.compactMap { $0 }) { target in
             selection = .container(target)
         }
+        .onReceive(appNavigation.$networkTarget.compactMap { $0 }) { name in
+            selection = .network(name)
+            appNavigation.networkTarget = nil
+        }
+        .onReceive(appNavigation.$volumeTarget.compactMap { $0 }) { name in
+            selection = .volume(name)
+            appNavigation.volumeTarget = nil
+        }
         .onReceive(appNavigation.$machineTarget.compactMap { $0 }) { target in
             selection = .machine(target)
         }

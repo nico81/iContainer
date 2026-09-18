@@ -36,6 +36,8 @@ final class AppNavigation: ObservableObject {
     @Published var containerTarget: ContainerNavigationTarget?
     @Published var editContainerId: String?
     @Published var machineTarget: MachineNavigationTarget?
+    @Published var networkTarget: String?
+    @Published var volumeTarget: String?
     @Published var editMachineId: String?
     @Published var serviceRequestID = 0
 
@@ -77,6 +79,16 @@ final class AppNavigation: ObservableObject {
 
     func editMachine(id: String) {
         editMachineId = id
+        activateApp()
+    }
+
+    func showNetwork(name: String) {
+        networkTarget = name
+        activateApp()
+    }
+
+    func showVolume(name: String) {
+        volumeTarget = name
         activateApp()
     }
 

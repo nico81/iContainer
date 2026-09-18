@@ -11,6 +11,10 @@ struct ContainerInspectFallback: Hashable {
     struct Mount: Hashable {
         let source: String
         let destination: String
+        /// `volume` / `virtiofs` (bind) / `tmpfs` — the key of the `type` object.
+        var kind: String? = nil
+        /// Named volume backing this mount, when `kind == "volume"`.
+        var volumeName: String? = nil
     }
     struct Resources: Hashable {
         let cpus: Int?
@@ -44,6 +48,21 @@ struct ContainerInspectFallback: Hashable {
     let readOnly: Bool?
     let resources: Resources?
     let dns: DNS?
+    // CLI ≥ 1.x extras
+    var startedDate: String? = nil
+    var labels: [String: String] = [:]
+    /// `uid:gid` or the raw user string the container was created with.
+    var user: String? = nil
+    var stopSignal: String? = nil
+    var capabilitiesAdded: [String] = []
+    var capabilitiesDropped: [String] = []
+    var sysctls: [String: String] = [:]
+    var useInit: Bool? = nil
+    var virtualization: Bool? = nil
+    var imageDigest: String? = nil
+    /// Name of the (first) network the container is attached to.
+    var networkName: String? = nil
+    var mtu: Int? = nil
 }
 
 func parseContainerInspect(_ raw: String) -> ContainerInspectFallback? {
@@ -93,8 +112,8 @@ func parseContainerInspect(_ raw: String) -> ContainerInspectFallback? {
         let environment = (initProcess?["environment"] as? [String]) ?? []
         let workingDir = inspectStringIn(initProcess ?? [:], keys: ["workingDirectory", "workingDir"])
             ?? inspectStringIn(config ?? [:], keys: ["workingDirectory", "workingDir"])
-        let created = inspectStringIn(dict, keys: ["created"])
-            ?? inspectStringIn(config ?? [:], keys: ["created"])
+        let created = inspectStringIn(dict, keys: ["created", "creationDate"])
+            ?? inspectStringIn(config ?? [:], keys: ["creationDate", "created"])
         let platformOS = inspectStringIn(platformDict ?? [:], keys: ["os"])
         let platformArch = inspectStringIn(platformDict ?? [:], keys: ["architecture"])
         let platform = (platformOS != nil && platformArch != nil) ? "\(platformOS!)/\(platformArch!)" : nil
@@ -134,14 +153,43 @@ func parseContainerInspect(_ raw: String) -> ContainerInspectFallback? {
         ports = Array(Set(ports)).sorted()
 
         let mounts = mountsArray.compactMap { mount -> ContainerInspectFallback.Mount? in
-            guard let source = inspectStringIn(mount, keys: ["source"]),
-                  let destination = inspectStringIn(mount, keys: ["destination"]) else {
-                return nil
+            guard let destination = inspectStringIn(mount, keys: ["destination"]) else { return nil }
+            let source = inspectStringIn(mount, keys: ["source"]) ?? ""
+            var kind: String?
+            var volumeName: String?
+            if let type = mount["type"] as? [String: Any], let first = type.keys.sorted().first {
+                kind = first
+                volumeName = inspectStringIn(type[first] as? [String: Any] ?? [:], keys: ["name"])
+            } else if let type = mount["type"] as? String {
+                kind = type
             }
-            return ContainerInspectFallback.Mount(source: source, destination: destination)
+            return ContainerInspectFallback.Mount(source: source, destination: destination, kind: kind, volumeName: volumeName)
         }
 
-        return ContainerInspectFallback(
+        // CLI ≥ 1.x extras.
+        let labels = (config?["labels"] as? [String: Any] ?? [:]).reduce(into: [String: String]()) { acc, kv in
+            if let v = kv.value as? String { acc[kv.key] = v } else if let n = kv.value as? NSNumber { acc[kv.key] = n.stringValue }
+        }
+        let sysctls = (config?["sysctls"] as? [String: Any] ?? [:]).reduce(into: [String: String]()) { acc, kv in
+            if let v = kv.value as? String { acc[kv.key] = v } else if let n = kv.value as? NSNumber { acc[kv.key] = n.stringValue }
+        }
+        var user: String?
+        if let userDict = initProcess?["user"] as? [String: Any] {
+            if let idDict = userDict["id"] as? [String: Any], let uid = inspectIntIn(idDict, keys: ["uid"]) {
+                user = inspectIntIn(idDict, keys: ["gid"]).map { "\(uid):\($0)" } ?? "\(uid)"
+            } else if let raw = userDict["raw"] as? [String: Any] {
+                user = inspectStringIn(raw, keys: ["userString", "user"])
+            } else {
+                user = inspectStringIn(userDict, keys: ["userString", "user", "name"])
+            }
+        }
+        let firstNetwork = networks.first ?? configNetworks.first ?? [:]
+        let networkName = inspectStringIn(firstNetwork, keys: ["network", "name"])
+            ?? inspectStringIn(configNetworks.first ?? [:], keys: ["network", "name"])
+        let mtu = inspectIntIn(firstNetwork, keys: ["mtu"])
+            ?? inspectIntIn(configNetworks.first?["options"] as? [String: Any] ?? [:], keys: ["mtu"])
+
+        var result = ContainerInspectFallback(
             id: id,
             status: status,
             image: image,
@@ -164,6 +212,19 @@ func parseContainerInspect(_ raw: String) -> ContainerInspectFallback? {
             resources: resources,
             dns: dns
         )
+        result.startedDate = inspectStringIn(statusDict ?? [:], keys: ["startedDate", "started"])
+        result.labels = labels
+        result.user = user
+        result.stopSignal = inspectStringIn(config ?? [:], keys: ["stopSignal"])
+        result.capabilitiesAdded = inspectStringArrayIn(config ?? [:], keys: ["capAdd"])
+        result.capabilitiesDropped = inspectStringArrayIn(config ?? [:], keys: ["capDrop"])
+        result.sysctls = sysctls
+        result.useInit = inspectBoolIn(config ?? [:], keys: ["useInit"])
+        result.virtualization = inspectBoolIn(config ?? [:], keys: ["virtualization"])
+        result.imageDigest = inspectStringIn(imageDict?["descriptor"] as? [String: Any] ?? [:], keys: ["digest"])
+        result.networkName = networkName
+        result.mtu = mtu
+        return result
     } catch {
         return nil
     }
