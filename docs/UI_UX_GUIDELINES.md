@@ -287,6 +287,19 @@ Keep iContainer clear, predictable, and fast for container operations, with mini
   - plaintext doc = logs
 - Avoid introducing decorative styles that reduce readability for operational data.
 
+## Networks and Volumes
+- Same section language as Containers / Machines / Images: reorderable
+  header, persisted expand state, search applies, rows hidden while the
+  service is stopped.
+- Never offer an action the CLI will refuse: hide Delete on the builtin
+  network, disable it while containers are attached / mount the volume, and
+  say who is using it in the tooltip and on the detail page.
+- Prune is a header context-menu action with a confirmation that spells out
+  what is removed (volume prune deletes data); it honours the confirm-prune
+  preference like the other destructive confirmations.
+- Call the volume size "Capacity": it's the provisioned maximum of the
+  sparse image, not usage. Don't present it as disk used.
+
 ## Docker interop
 - Docker features are additive and read-only towards Docker: never start,
   stop, delete or modify anything in Docker from iContainer.

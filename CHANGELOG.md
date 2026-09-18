@@ -7,6 +7,40 @@ The format follows Keep a Changelog, and versions use semantic versioning:
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-09-18
+
+### Added
+- **Networks and Volumes in the sidebar.** Two new reorderable sections
+  list the container service's networks (subnet, attached containers,
+  `builtin` badge on `default`) and volumes (capacity, mounting containers,
+  `anonymous` badge for image `VOLUME` volumes). Each has a detail page —
+  addressing / configuration, the containers using it (click to jump), the
+  backing `volume.img` with Reveal in Finder — and a Delete action that is
+  disabled while the resource is in use, with the reason shown. Prune
+  unused networks / volumes from the section header menu (honours the
+  "confirm prune" setting). *New Network…* / *New Volume…* join the toolbar
+  `+` menu.
+- **Service Info for container CLI 1.4.** The Info tab now shows Service
+  and CLI versions separately (with a warning when the CLI was upgraded but
+  the service not yet restarted), the host (macOS build, architecture,
+  CPUs), the log root, a Storage section with counts and — on demand —
+  `container system df` sizes and reclaimable space, and a Service
+  Defaults section (container/build/machine defaults, kernel, vminit, DNS
+  domain, registry) read from `container system property list`.
+
+### Fixed
+- Version Information and Data Root were empty with container CLI 1.4.x:
+  the status table renamed its rows (`server.*`, `paths.*`). Both the new
+  and the legacy spellings are parsed. The "CLI update available" check now
+  compares the installed CLI version rather than the running service's.
+
+### Notes
+- Verified with Apple `container` CLI **1.4.1** (2026-09-18). Besides the
+  `system status` row renames, 1.4 adds `--format json` to `system status`,
+  `system df`, host information and container/image counters. List /
+  inspect JSON shapes for containers, images, machines, networks and
+  volumes are unchanged.
+
 ## [2.3.0] - 2026-09-07
 
 ### Added

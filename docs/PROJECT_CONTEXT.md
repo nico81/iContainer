@@ -51,6 +51,11 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
   translated configuration, the DNS note and the translation warnings.
   Prefill of name/ports/volumes/env is done by `ContentView`
   (`loadDockerContainerConfiguration`, `runCreateFromDocker`).
+- `iContainer/NetworkVolumeViews.swift`: `NetworkRowView` / `VolumeRowView`
+  (sidebar rows with in-use-aware delete), `NetworkDetailView` /
+  `VolumeDetailView` (configuration, addressing / backing file, attached or
+  mounting containers with jump-to, delete), `CreateNetworkSheet` /
+  `CreateVolumeSheet`.
 - `iContainer/WindowResizeConfigurator.swift`: `NSViewRepresentable` that
   makes sheets resizable with a minimum size.
 - `iContainer/ViewExtensions.swift`: `View.applyIf` for conditional
@@ -104,6 +109,14 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
   captured output (`iContainerTests/DockerFixtures.swift`).
 - `iContainer/CLIProcess.swift`: shared blocking process runner (drain
   before wait) for binaries other than `container`.
+- `iContainer/NetworkVolume.swift`: `ContainerNetwork` / `ContainerVolume`
+  models (`isBuiltin` via the `com.apple.container.resource.role=builtin`
+  label, `isAnonymous` via `…resource.anonymous`) and the
+  `parseNetworkList` / `parseVolumeList` / `parseContainerAttachments`
+  parsers. `Container` now carries `networkNames` / `volumeNames` (from
+  `configuration.networks[].network` and `mounts[].type.volume.name`) so
+  the wrapper can answer `containers(onNetwork:)` / `containers(usingVolume:)`
+  without extra CLI calls.
 - `iContainer/ContainerStatsStore.swift`: standalone `ObservableObject`
   holding rolling per-container resource history (CPU/memory/network),
   kept off the wrapper so frequent stats mutations don't re-render the
@@ -189,6 +202,32 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
   compose *service* names (`db`) are **not** aliased — only the container
   name resolves. The Compose sheet and the Docker picker show a DNS status
   line (green note / orange how-to) accordingly.
+
+- Verified compatible with `container` CLI **1.4.1** (2026-09-18). `system
+  status` rows were renamed: `server.version/commit/build/appName`,
+  `client.version/commit/build`, `host.os/architecture/cpus`,
+  `paths.appRoot/installRoot/logRoot`, `containers.total/running`,
+  `images.total`; `--format json` now exists for `system status`. New
+  `container system df [--format json]` (`{images,containers,volumes:
+  {total, active, sizeInBytes, reclaimable}}`, ~1 s). `CLIParsers.
+  parseServiceDetails` matches the dotted keys explicitly and keeps the
+  0.x / 1.0–1.3 spellings; `parseSystemDiskUsage` reads df. List/inspect
+  shapes for containers, images, machines, networks, volumes unchanged.
+
+### Networks & Volumes
+- `ContainerizationWrapper.networks` / `.volumes` are refreshed on every
+  poll (`network list` / `volume list --format json`, cheap). Sorting:
+  builtin first / named before anonymous, then by name.
+- Delete is offered only when the CLI would accept it (`isNetworkInUse`:
+  builtin or attached containers; `isVolumeInUse`: mounting containers) —
+  the CLI errors otherwise (`cannot delete subnet … with referring
+  containers`). `container network prune` / `volume prune` remove unused
+  ones; volume prune also removes anonymous volumes and their data.
+- Volume `sizeInBytes` is the provisioned capacity of the sparse
+  `volume.img` (anonymous volumes default to 512 GiB), not the space used
+  — labelled "Capacity" in the UI.
+- `container volume create -s <size>` accepts K/M/G/T/P suffixes; names for
+  both resources are validated client-side (letters, digits, `-`, `_`, `.`).
 
 ### Per-container detail
 - `iContainer/ContainerDetailView.swift`: thin TabView host for the
@@ -462,6 +501,14 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
 - Cloning a Docker container always shows the translation warnings and the
   DNS status before *Create*; ports/volumes/env are prefilled into the
   standard editors so the user can adjust them.
+- `Networks` / `Volumes` sections: rows shown only when the service runs;
+  delete button hidden for the builtin network, disabled (with the users
+  listed in the tooltip) while in use; prune lives in the header context
+  menu and honours the confirm-prune preference; creation goes through the
+  toolbar `+` menu like everything else.
+- Service Info: Version Information shows *Service* and *CLI* separately
+  and warns on mismatch; Storage's df measurement is on demand (button),
+  never per poll.
 
 ## Shell Model
 - Container shell is persistent per container (session cache by `containerId`).
