@@ -24,6 +24,8 @@ The format follows Keep a Changelog, and versions use semantic versioning:
   the backing file, delete) and the detail pages carry the same actions.
   Volumes show their **real disk usage** ("68 MB used of 512 GB") read from
   the sparse backing image — the CLI only reports the provisioned capacity.
+  Anonymous volumes whose container was deleted are flagged as *orphaned*
+  and the section footer sums them up with a one-click *Prune…*.
 - **Network picker in the create sheet** (Container Options): new
   containers can join a user-defined network instead of always landing on
   `default`; the service DNS domain is passed as search domain so they

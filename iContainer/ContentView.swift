@@ -821,6 +821,7 @@ struct ContentView: View {
                     if filteredVolumes.isEmpty && !sidebarSearchQuery.isEmpty {
                         Text("No matching volumes").font(.caption).foregroundStyle(.secondary)
                     }
+                    orphanedVolumesFooter
                 } else {
                     EmptyView()
                 }
@@ -837,6 +838,31 @@ struct ContentView: View {
                     }
                 }
             }
+        }
+    }
+
+    private var orphanedAnonymousVolumes: [ContainerVolume] {
+        containerManager.volumes.filter { $0.isAnonymous && !containerManager.isVolumeInUse($0) }
+    }
+
+    /// Anonymous volumes whose container is gone are pure leftovers; say so
+    /// in the section itself and offer the cleanup right there.
+    @ViewBuilder
+    private var orphanedVolumesFooter: some View {
+        let orphaned = orphanedAnonymousVolumes
+        if !orphaned.isEmpty {
+            let bytes = orphaned.compactMap(\.allocatedBytes).reduce(0, +)
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange)
+                Text("\(orphaned.count) orphaned anonymous volume\(orphaned.count == 1 ? "" : "s")\(bytes > 0 ? " · \(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .binary)) on disk" : "")")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("Prune…") { requestPrune(networks: false) }
+                    .controlSize(.small)
+                    .help("Remove every volume no container references")
+            }
+            .padding(.vertical, 4)
         }
     }
 

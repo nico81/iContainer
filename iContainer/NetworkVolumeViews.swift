@@ -115,7 +115,7 @@ struct VolumeRowView: View {
 
     private var usersText: String {
         switch users.count {
-        case 0: return volume.isAnonymous ? "unused" : "not mounted"
+        case 0: return volume.isAnonymous ? "orphaned — no container uses it" : "not mounted"
         case 1: return "mounted by \(users[0].name)"
         default: return "mounted by \(users.count) containers"
         }
@@ -135,7 +135,7 @@ struct VolumeRowView: View {
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1)
                             .background(Color.secondary.opacity(0.12), in: Capsule())
-                            .help("Created automatically for an image VOLUME directive; the container that used it is gone")
+                            .help("Created automatically by an image VOLUME directive when a container was created; deleting that container does not remove the volume")
                     }
                 }
                 Text("\(volume.displayUsage) · \(usersText)")
@@ -353,7 +353,9 @@ struct VolumeDetailView: View {
                         DetailRow(label: "Filesystem", value: volume.format ?? "-")
                         DetailRow(label: "Created", value: volume.creationDate ?? "-")
                         if volume.isAnonymous {
-                            Text("Created automatically for an image VOLUME directive. Anonymous volumes are removed by Prune when no container references them.")
+                            Text(users.isEmpty
+                                 ? "Created automatically by an image VOLUME directive when a container was created; that container has since been deleted, so nothing can reach this data any more. Prune Unused Volumes removes it."
+                                 : "Created automatically by an image VOLUME directive for the container that mounts it.")
                                 .font(.caption2).foregroundColor(.secondary)
                         }
                         Text("Capacity is the maximum the sparse backing image can grow to; \"Used on disk\" is what it actually occupies on your Mac.")
