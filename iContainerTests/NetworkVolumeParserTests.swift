@@ -101,6 +101,7 @@ final class NetworkVolumeParserTests: XCTestCase {
         let attachments = CLIParsers.parseContainerAttachments(entry)
         XCTAssertEqual(attachments.networks, ["app-net"])
         XCTAssertEqual(attachments.volumes, ["pgdata"], "bind and tmpfs mounts are not volumes")
+        XCTAssertEqual(attachments.mounts, [VolumeMount(name: "pgdata", destination: "/var/lib/postgresql/data")])
         let empty = CLIParsers.parseContainerAttachments(["configuration": ["id": "x"]])
         XCTAssertEqual(empty.networks, [])
         XCTAssertEqual(empty.volumes, [])
@@ -144,5 +145,56 @@ final class NetworkVolumeParserTests: XCTestCase {
         XCTAssertNil(Ext4Superblock(superblockData: superblock(inodes: 10, freeInodes: 0, magic: 0x1234)))
         XCTAssertNil(Ext4Superblock(superblockData: Data(count: 16)))
         XCTAssertNil(Ext4Superblock.read(fromImageAt: "/nonexistent/volume.img"))
+    }
+
+    // MARK: - ls -lA
+
+    func testParseDirectoryListingBusyboxAndGNU() {
+        // busybox (alpine) — wide columns, CLI progress lines interleaved
+        let busybox = """
+        [5/6] Unpacking init image [0s]
+        [6/6] Starting container [1s]
+        total 308
+        -rw-r--r--    1 root     root        307200 Sep 18 22:07 big.bin
+        drwxr-xr-x    2 root     root          4096 Sep 18 22:07 dir with space
+        lrwxrwxrwx    1 root     root             5 Sep 18 22:07 link -> a.txt
+        drwx------    2 root     root          4096 Sep 18 22:07 lost+found
+        """
+        let entries = CLIParsers.parseDirectoryListing(busybox)
+        XCTAssertEqual(entries.map(\.name), ["big.bin", "dir with space", "link", "lost+found"])
+        XCTAssertEqual(entries[0].sizeBytes, 307_200)
+        XCTAssertFalse(entries[0].isDirectory)
+        XCTAssertTrue(entries[1].isDirectory)
+        XCTAssertEqual(entries[1].displaySize, "—")
+        XCTAssertTrue(entries[2].isSymlink)
+        XCTAssertEqual(entries[2].linkTarget, "a.txt")
+        XCTAssertEqual(entries[0].modified, "Sep 18 22:07")
+        XCTAssertEqual(entries[0].permissions, "-rw-r--r--")
+
+        // GNU coreutils (debian postgres image) — narrow columns, year form
+        let gnu = """
+        total 128
+        drwx------ 5 postgres postgres  4096 Sep 18 22:04 base
+        -rw------- 1 postgres postgres     3 Jan  2  2025 PG_VERSION
+        """
+        let gnuEntries = CLIParsers.parseDirectoryListing(gnu)
+        XCTAssertEqual(gnuEntries.map(\.name), ["base", "PG_VERSION"])
+        XCTAssertEqual(gnuEntries[1].sizeBytes, 3)
+        XCTAssertEqual(gnuEntries[1].modified, "Jan 2 2025")
+    }
+
+    func testParseDirectoryListingIgnoresGarbage() {
+        XCTAssertEqual(CLIParsers.parseDirectoryListing(""), [])
+        XCTAssertEqual(CLIParsers.parseDirectoryListing("ls: /__vol/nope: No such file or directory"), [])
+        XCTAssertEqual(CLIParsers.parseDirectoryListing("total 0\n"), [])
+    }
+
+    func testHelperImagePrefersLocalAlpine() {
+        let images = [
+            ContainerImage(id: "1", name: "docker.io/library/postgres", tag: "latest", sizeBytes: nil, sizeText: nil, createdAt: nil),
+            ContainerImage(id: "2", name: "docker.io/library/alpine", tag: "3.22", sizeBytes: nil, sizeText: nil, createdAt: nil),
+        ]
+        XCTAssertEqual(ContainerizationWrapper.helperImage(from: images), "docker.io/library/alpine:3.22")
+        XCTAssertEqual(ContainerizationWrapper.helperImage(from: [images[0]]), "docker.io/library/alpine:latest")
     }
 }

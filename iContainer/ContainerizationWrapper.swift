@@ -167,6 +167,56 @@ class ContainerizationWrapper: ObservableObject {
         !containers(usingVolume: volume.name).isEmpty
     }
 
+    /// How a volume listing was obtained.
+    enum VolumeListingSource: Equatable {
+        /// `container exec` inside a running container that mounts the volume.
+        case runningContainer(String)
+        /// A throwaway `container run --rm … ls` with the volume mounted read-only.
+        case helperContainer(image: String)
+    }
+
+    /// Lists `path` (relative to the volume root) with `ls -lA`. Uses a
+    /// running container that mounts the volume when there is one — instant
+    /// and sees the live filesystem — otherwise boots a temporary helper
+    /// container with the volume mounted read-only (~1 s; the CLI refuses
+    /// to mount a volume that another container has, so the two cases are
+    /// exclusive by construction).
+    func listVolumeDirectory(_ volume: ContainerVolume, path: String) async throws -> (entries: [DirectoryEntry], source: VolumeListingSource) {
+        let relative = path.split(separator: "/").filter { !$0.isEmpty && $0 != ".." }.joined(separator: "/")
+        if let host = containers(usingVolume: volume.name).first(where: { $0.status == .running }),
+           let mount = host.volumeMounts.first(where: { $0.name == volume.name }), !mount.destination.isEmpty {
+            let full = relative.isEmpty ? mount.destination : mount.destination + "/" + relative
+            let output = try await runCommand(["exec", host.id, "ls", "-lA", full])
+            return (CLIParsers.parseDirectoryListing(output), .runningContainer(host.name))
+        }
+        let image = Self.helperImage(from: images)
+        let full = relative.isEmpty ? "/__vol" : "/__vol/" + relative
+        do {
+            let output = try await runCommand(["run", "--rm", "-v", "\(volume.name):/__vol:ro", image, "ls", "-lA", full])
+            return (CLIParsers.parseDirectoryListing(output), .helperContainer(image: image))
+        } catch {
+            // Surface the `ls` error line, not the CLI's progress spam.
+            let message = error.localizedDescription
+                .split(whereSeparator: \.isNewline)
+                .map(String.init)
+                .last { $0.contains("ls:") || $0.lowercased().contains("error") } ?? message(from: error)
+            throw NSError(domain: "iContainer", code: 3, userInfo: [NSLocalizedDescriptionKey: message])
+        }
+    }
+
+    private func message(from error: Error) -> String { error.localizedDescription }
+
+    /// Smallest suitable local image for the helper, falling back to
+    /// Docker Hub's alpine (which the CLI pulls on first use).
+    nonisolated static func helperImage(from images: [ContainerImage]) -> String {
+        for candidate in ["alpine", "busybox"] {
+            if let image = images.first(where: { $0.name.split(separator: "/").last == Substring(candidate) }) {
+                return image.reference
+            }
+        }
+        return "docker.io/library/alpine:latest"
+    }
+
     func createNetwork(name: String) async -> Bool {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { lastErrorMessage = "Network name is required."; return false }
@@ -436,7 +486,7 @@ class ContainerizationWrapper: ObservableObject {
                 let decoded = try JSONDecoder().decode([ContainerCLI].self, from: data)
                 // Network / named-volume attachments come from the untyped
                 // JSON (their shape is nested and version-dependent).
-                var attachments: [String: (networks: [String], volumes: [String])] = [:]
+                var attachments: [String: (networks: [String], volumes: [String], mounts: [VolumeMount])] = [:]
                 if let raw = try? JSONSerialization.jsonObject(with: data, options: []) as? [[String: Any]] {
                     for entry in raw {
                         let configuration = entry["configuration"] as? [String: Any] ?? [:]
@@ -454,7 +504,8 @@ class ContainerizationWrapper: ObservableObject {
                         image: cli.configuration?.image?.reference,
                         ipAddress: cli.networks?.first?.resolvedAddress,
                         networkNames: attachments[id]?.networks ?? [],
-                        volumeNames: attachments[id]?.volumes ?? []
+                        volumeNames: attachments[id]?.volumes ?? [],
+                        volumeMounts: attachments[id]?.mounts ?? []
                     )
                 }
                 let sortByStatusThenName: (Container, Container) -> Bool = { lhs, rhs in

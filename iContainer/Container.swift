@@ -10,6 +10,13 @@ struct Container: Identifiable, Equatable {
     var networkNames: [String] = []
     /// Named volumes mounted into the container (`mounts[].type.volume.name`).
     var volumeNames: [String] = []
+    /// Same volumes with their mount point inside the container.
+    var volumeMounts: [VolumeMount] = []
+}
+
+struct VolumeMount: Equatable, Hashable {
+    let name: String
+    let destination: String
 }
 
 enum ContainerStatus: Equatable {

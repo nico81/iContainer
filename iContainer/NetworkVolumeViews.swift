@@ -385,6 +385,8 @@ struct VolumeDetailView: View {
                         }
                     }
 
+                    VolumeContentsBrowser(volume: volume)
+
                     DetailSection(title: "Mounted By", icon: "shippingbox") {
                         if users.isEmpty {
                             Text("No container mounts this volume.").font(.callout).foregroundColor(.secondary)
@@ -569,6 +571,135 @@ struct CreateVolumeSheet: View {
                 errorMessage = containerManager.lastErrorMessage
                 containerManager.lastErrorMessage = nil
             }
+        }
+    }
+}
+
+
+// MARK: - Contents browser
+
+/// Read-only directory browser for a volume's filesystem. Listing goes
+/// through `ContainerizationWrapper.listVolumeDirectory`: instant via
+/// `exec` when a running container mounts the volume, otherwise through a
+/// short-lived helper container (the only way to read an ext4 image from
+/// macOS).
+struct VolumeContentsBrowser: View {
+    let volume: ContainerVolume
+    @EnvironmentObject var containerManager: ContainerizationWrapper
+    @State private var pathComponents: [String] = []
+    @State private var entries: [DirectoryEntry] = []
+    @State private var source: ContainerizationWrapper.VolumeListingSource?
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+    @State private var showHidden = false
+
+    private var currentPath: String { pathComponents.joined(separator: "/") }
+    private var visibleEntries: [DirectoryEntry] {
+        (showHidden ? entries : entries.filter { !$0.name.hasPrefix(".") && $0.name != "lost+found" })
+            .sorted { lhs, rhs in
+                if lhs.isDirectory != rhs.isDirectory { return lhs.isDirectory }
+                return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
+    }
+    private var hiddenCount: Int { entries.count - entries.filter { !$0.name.hasPrefix(".") && $0.name != "lost+found" }.count }
+
+    var body: some View {
+        DetailSection(title: "Contents", icon: "folder") {
+            HStack(spacing: 6) {
+                Button { pathComponents = [] } label: { Image(systemName: "internaldrive") }
+                    .buttonStyle(.plain)
+                    .disabled(pathComponents.isEmpty)
+                    .help("Volume root")
+                ForEach(Array(pathComponents.enumerated()), id: \.offset) { index, component in
+                    Text("/").foregroundColor(.secondary)
+                    Button(component) { pathComponents = Array(pathComponents.prefix(index + 1)) }
+                        .buttonStyle(.plain)
+                        .font(InfoTextStyle.monospacedValueFont)
+                        .disabled(index == pathComponents.count - 1)
+                }
+                if pathComponents.isEmpty { Text("/").font(InfoTextStyle.monospacedValueFont).foregroundColor(.secondary) }
+                Spacer()
+                Toggle("Hidden", isOn: $showHidden).toggleStyle(.checkbox).font(.caption)
+                Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }
+                    .buttonStyle(.borderless)
+                    .disabled(isLoading)
+                    .help("Refresh")
+            }
+
+            if isLoading && entries.isEmpty {
+                HStack(spacing: 8) {
+                    ProgressView().scaleEffect(0.7)
+                    Text(source == nil && containerManager.containers(usingVolume: volume.name).allSatisfy { $0.status != .running }
+                         ? "Starting a temporary container to read the volume…"
+                         : "Reading…")
+                        .font(.caption).foregroundColor(.secondary)
+                }
+            } else if let errorMessage {
+                Label(errorMessage, systemImage: "xmark.circle.fill").font(.caption).foregroundColor(.red).textSelection(.enabled)
+            } else if visibleEntries.isEmpty {
+                Text(entries.isEmpty ? "Empty directory." : "Only hidden entries here (\(hiddenCount)).")
+                    .font(.callout).foregroundColor(.secondary)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(visibleEntries) { entry in
+                        entryRow(entry)
+                        if entry.id != visibleEntries.last?.id { Divider().opacity(0.5) }
+                    }
+                }
+                .background(Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: AppRadius.small))
+            }
+
+            HStack {
+                if let source {
+                    switch source {
+                    case .runningContainer(let name):
+                        Text("Live view through container \(name).").font(.caption2).foregroundColor(.secondary)
+                    case .helperContainer(let image):
+                        Text("Read with a temporary container (\(image), read-only), removed after each listing.").font(.caption2).foregroundColor(.secondary)
+                    }
+                }
+                if hiddenCount > 0 && !showHidden {
+                    Text("· \(hiddenCount) hidden").font(.caption2).foregroundColor(.secondary)
+                }
+                Spacer()
+            }
+        }
+        .task(id: "\(volume.name)|\(currentPath)") { await load() }
+    }
+
+    private func entryRow(_ entry: DirectoryEntry) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: entry.isDirectory ? "folder.fill" : entry.isSymlink ? "arrow.triangle.turn.up.right.diamond" : "doc")
+                .foregroundColor(entry.isDirectory ? .accentColor : .secondary)
+                .frame(width: 16)
+            if entry.isDirectory {
+                Button(entry.name) { pathComponents.append(entry.name) }
+                    .buttonStyle(.plain)
+                    .font(InfoTextStyle.monospacedValueFont)
+            } else {
+                Text(entry.isSymlink ? "\(entry.name) → \(entry.linkTarget ?? "?")" : entry.name)
+                    .font(InfoTextStyle.monospacedValueFont)
+                    .textSelection(.enabled)
+            }
+            Spacer()
+            Text(entry.displaySize).font(.caption.monospacedDigit()).foregroundColor(.secondary).frame(width: 70, alignment: .trailing)
+            Text(entry.modified).font(.caption).foregroundColor(.secondary).frame(width: 110, alignment: .trailing)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+    }
+
+    private func load() async {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            let result = try await containerManager.listVolumeDirectory(volume, path: currentPath)
+            entries = result.entries
+            source = result.source
+        } catch {
+            entries = []
+            errorMessage = error.localizedDescription
         }
     }
 }

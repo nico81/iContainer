@@ -25,7 +25,12 @@ The format follows Keep a Changelog, and versions use semantic versioning:
   Volumes show their **real disk usage** ("68 MB used of 512 GB") read from
   the sparse backing image — the CLI only reports the provisioned capacity.
   Anonymous volumes whose container was deleted are flagged as *orphaned*
-  and the section footer sums them up with a one-click *Prune…*.
+  and the section footer sums them up with a one-click *Prune…*. The volume
+  page has a read-only **Contents browser**: folders, files, symlinks with
+  sizes and dates, breadcrumb navigation, hidden-files toggle. It reads the
+  live filesystem through a running container that mounts the volume, or —
+  when nothing mounts it — through a temporary read-only helper container
+  (alpine), the only way to look inside an ext4 image from macOS.
 - **Network picker in the create sheet** (Container Options): new
   containers can join a user-defined network instead of always landing on
   `default`; the service DNS domain is passed as search domain so they

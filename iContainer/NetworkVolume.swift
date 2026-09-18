@@ -142,6 +142,22 @@ nonisolated struct Ext4Superblock: Equatable, Sendable {
     }
 }
 
+/// A file, directory or symlink inside a volume, as listed by `ls -lA`.
+nonisolated struct DirectoryEntry: Identifiable, Equatable, Sendable {
+    var id: String { name }
+    let name: String
+    let isDirectory: Bool
+    let isSymlink: Bool
+    let linkTarget: String?
+    let sizeBytes: Int64
+    let modified: String
+    let permissions: String
+
+    var displaySize: String {
+        isDirectory ? "—" : ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file)
+    }
+}
+
 // MARK: - Parsers
 
 nonisolated extension CLIParsers {
@@ -188,14 +204,52 @@ nonisolated extension CLIParsers {
     /// Extracts the network names and named volumes a container is attached
     /// to from one `container list --format json` entry (CLI ≥ 1.0:
     /// `configuration.networks[].network`, `configuration.mounts[].type.volume.name`).
-    static func parseContainerAttachments(_ dict: [String: Any]) -> (networks: [String], volumes: [String]) {
+    static func parseContainerAttachments(_ dict: [String: Any]) -> (networks: [String], volumes: [String], mounts: [VolumeMount]) {
         let configuration = dict["configuration"] as? [String: Any] ?? [:]
         let networks = (configuration["networks"] as? [[String: Any]] ?? []).compactMap { stringValue($0, keys: ["network", "name"]) }
-        let volumes = (configuration["mounts"] as? [[String: Any]] ?? []).compactMap { mount -> String? in
-            guard let type = mount["type"] as? [String: Any], let volume = type["volume"] as? [String: Any] else { return nil }
-            return stringValue(volume, keys: ["name"])
+        let mounts = (configuration["mounts"] as? [[String: Any]] ?? []).compactMap { mount -> VolumeMount? in
+            guard let type = mount["type"] as? [String: Any], let volume = type["volume"] as? [String: Any],
+                  let name = stringValue(volume, keys: ["name"]) else { return nil }
+            return VolumeMount(name: name, destination: stringValue(mount, keys: ["destination"]) ?? "")
         }
-        return (networks, volumes)
+        return (networks, mounts.map(\.name), mounts)
+    }
+
+    /// One row of `ls -lA` output (GNU coreutils and busybox share the
+    /// layout: `perms links owner group size Mon DD HH:MM|YYYY name`).
+    static func parseDirectoryListing(_ output: String) -> [DirectoryEntry] {
+        output.split(whereSeparator: \.isNewline).compactMap { rawLine in
+            let line = String(rawLine).trimmingCharacters(in: .whitespaces)
+            // Skip `total N`, CLI progress (`[3/6] Fetching kernel`), blanks.
+            guard let first = line.first, "-dlcbps".contains(first), line.count > 10 else { return nil }
+            let columns = line.split(separator: " ", omittingEmptySubsequences: true)
+            guard columns.count >= 9, columns[0].count >= 10 else { return nil }
+            let perms = String(columns[0])
+            let size = Int64(columns[4]) ?? 0
+            let modified = "\(columns[5]) \(columns[6]) \(columns[7])"
+            // Name = everything after the 8th column, preserving inner spaces.
+            var rest = line
+            for _ in 0..<8 {
+                guard let space = rest.firstIndex(of: " ") else { return nil }
+                rest = String(rest[rest.index(after: space)...]).drop(while: { $0 == " " }).description
+            }
+            var name = rest
+            var target: String?
+            if first == "l", let arrow = rest.range(of: " -> ") {
+                name = String(rest[..<arrow.lowerBound])
+                target = String(rest[arrow.upperBound...])
+            }
+            guard !name.isEmpty else { return nil }
+            return DirectoryEntry(
+                name: name,
+                isDirectory: first == "d",
+                isSymlink: first == "l",
+                linkTarget: target,
+                sizeBytes: size,
+                modified: modified,
+                permissions: perms
+            )
+        }
     }
 
     private static func jsonArray(_ output: String) -> [[String: Any]]? {
