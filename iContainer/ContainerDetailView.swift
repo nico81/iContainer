@@ -19,6 +19,18 @@ struct ContainerDetailView: View {
         _selectedTab = State(initialValue: initialTab)
     }
 
+    /// Named volumes this container mounts (from the live list). Drives the
+    /// optional "Volumes" tab.
+    private var volumeMounts: [VolumeMount] {
+        containerManager.containers.first(where: { $0.id == containerId })?.volumeMounts ?? []
+    }
+
+    private var tabLabels: [String] {
+        var labels = ["Info", "Stats", "Shell", "Logs"]
+        if !volumeMounts.isEmpty { labels.append("Volumes") }
+        return labels
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             Group {
@@ -28,7 +40,8 @@ struct ContainerDetailView: View {
                         details: details,
                         fallback: fallback,
                         isLoading: isLoading,
-                        formattedInspectOutput: formattedInspectOutput
+                        formattedInspectOutput: formattedInspectOutput,
+                        onBrowseVolumes: volumeMounts.isEmpty ? nil : { selectedTab = 4 }
                     )
 
                 case 1:
@@ -51,6 +64,13 @@ struct ContainerDetailView: View {
                         isActive: true
                     )
 
+                case 4:
+                    ContainerVolumesView(
+                        details: details,
+                        containerId: containerId,
+                        volumeMounts: volumeMounts
+                    )
+
                 default:
                     EmptyView()
                 }
@@ -62,8 +82,8 @@ struct ContainerDetailView: View {
         .navigationTitle("")
         .toolbar {
             ToolbarItem(placement: .principal) {
-                AccentTabPicker(selection: $selectedTab, labels: ["Info", "Stats", "Shell", "Logs"])
-                    .frame(width: 320)
+                AccentTabPicker(selection: $selectedTab, labels: tabLabels)
+                    .frame(width: volumeMounts.isEmpty ? 320 : 400)
             }
         }
         .task(id: containerId) {
@@ -73,6 +93,9 @@ struct ContainerDetailView: View {
             Task {
                 await loadDetails()
             }
+            // The Volumes tab disappears with its last volume (e.g. after a
+            // recreate); don't leave the picker pointing at nothing.
+            if selectedTab == 4 && volumeMounts.isEmpty { selectedTab = 0 }
         }
     }
 

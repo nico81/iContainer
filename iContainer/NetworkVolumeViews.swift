@@ -331,110 +331,32 @@ struct VolumeDetailView: View {
     @EnvironmentObject var containerManager: ContainerizationWrapper
     @EnvironmentObject var appNavigation: AppNavigation
     @State private var showingDeleteConfirmation = false
+    @State private var selectedTab = 0
 
     private var volume: ContainerVolume? { containerManager.volumes.first { $0.name == volumeName } }
     private var users: [Container] { containerManager.containers(usingVolume: volumeName) }
 
     var body: some View {
-        ScrollView {
+        VStack(spacing: 0) {
             if let volume {
-                VStack(alignment: .leading, spacing: 24) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text(volume.name).font(.largeTitle).fontWeight(.bold)
-                                .lineLimit(1).truncationMode(.middle)
-                            Spacer()
-                            if volume.isAnonymous { StatusBadge(status: "anonymous") }
-                        }
-                        Text("Volume").font(.caption).foregroundColor(.secondary)
-                    }
-
-                    DetailSection(title: "Configuration", icon: "internaldrive") {
-                        DetailRow(label: "Contents", value: users.isEmpty
-                                  ? (volume.displayContents.map { $0 == "empty" ? "Empty filesystem — nothing was ever written to it" : $0 } ?? "-")
-                                  : "Mounted — inspect from inside the container (the on-disk index is updated when the container stops)")
-                        DetailRow(label: "Used on disk", value: volume.displayAllocated ?? "-")
-                        DetailRow(label: "Capacity", value: volume.displayCapacity)
-                        DetailRow(label: "Driver", value: volume.driver ?? "-")
-                        DetailRow(label: "Filesystem", value: volume.format ?? "-")
-                        DetailRow(label: "Created", value: volume.creationDate ?? "-")
-                        if volume.isAnonymous {
-                            Text(users.isEmpty
-                                 ? "Created automatically by an image VOLUME directive when a container was created; that container has since been deleted, so nothing can reach this data any more. Prune Unused Volumes removes it."
-                                 : "Created automatically by an image VOLUME directive for the container that mounts it.")
-                                .font(.caption2).foregroundColor(.secondary)
-                        }
-                        Text("Capacity is the maximum the sparse backing image can grow to; \"Used on disk\" is what it actually occupies on your Mac.")
-                            .font(.caption2).foregroundColor(.secondary)
-                    }
-
-                    DetailSection(title: "Backing File", icon: "doc") {
-                        HStack(spacing: 6) {
-                            Text(volume.source ?? "-")
-                                .font(InfoTextStyle.monospacedValueFont)
-                                .textSelection(.enabled)
-                                .lineLimit(2)
-                                .truncationMode(.middle)
-                            if let source = volume.source, FileManager.default.fileExists(atPath: source) {
-                                Button {
-                                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: source)])
-                                } label: { Image(systemName: "folder") }
-                                .buttonStyle(.borderless)
-                                .help("Reveal in Finder")
-                            }
-                        }
-                    }
-
-                    VolumeContentsBrowser(volume: volume)
-
-                    DetailSection(title: "Mounted By", icon: "shippingbox") {
-                        if users.isEmpty {
-                            Text("No container mounts this volume.").font(.callout).foregroundColor(.secondary)
-                        } else {
-                            ForEach(users) { container in
-                                Button {
-                                    appNavigation.showContainer(id: container.id, tab: 0)
-                                } label: {
-                                    HStack(spacing: 10) {
-                                        StatusDot(isRunning: container.status == .running)
-                                        Text(container.name).font(.callout.weight(.medium))
-                                        Spacer()
-                                        Image(systemName: "chevron.right").font(.caption).foregroundColor(.secondary)
-                                    }
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .padding(.vertical, 2)
-                            }
-                        }
-                    }
-
-                    HStack(spacing: 10) {
-                        Button {
-                            appNavigation.requestNewContainer(prefill: NewContainerPrefill(volume: volume.name))
-                        } label: {
-                            Label("Create Container with This Volume", systemImage: "plus")
-                        }
-                        .actionButtonStyle(prominent: true)
-                        Button(role: .destructive) { showingDeleteConfirmation = true } label: {
-                            Label("Delete Volume", systemImage: "trash")
-                        }
-                        .disabled(!users.isEmpty || containerManager.updatingVolumeIDs.contains(volume.name))
-                        .help(users.isEmpty ? "" : "Delete the containers that mount it first.")
-                        Spacer()
-                    }
-                    Text("Mount it in a new container as `\(volume.name):/path`. The data lives only inside the ext4 image, so the way to read it is from a container.")
-                        .font(.caption2).foregroundColor(.secondary)
+                switch selectedTab {
+                case 1: contentsTab(volume)
+                default: infoTab(volume)
                 }
-                .padding()
             } else {
                 Text("Volume \"\(volumeName)\" no longer exists.")
                     .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .padding(.top, 50)
             }
         }
-        .navigationTitle(volume?.displayName ?? volumeName)
+        .navigationTitle("")
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                AccentTabPicker(selection: $selectedTab, labels: ["Info", "Contents"])
+                    .frame(width: 200)
+            }
+        }
         .confirmationDialog("Delete Volume?", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
                 Task { await containerManager.deleteVolume(name: volumeName) }
@@ -442,6 +364,194 @@ struct VolumeDetailView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Delete volume \"\(volumeName)\"? All data stored in it is lost. This cannot be undone.")
+        }
+    }
+
+    private func header(_ volume: ContainerVolume) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(volume.name).font(.largeTitle).fontWeight(.bold)
+                    .lineLimit(1).truncationMode(.middle)
+                Spacer()
+                if volume.isAnonymous { StatusBadge(status: "anonymous") }
+                StatusBadge(status: users.isEmpty ? "unmounted" : "mounted")
+            }
+            Text("Volume · \(volume.displayUsage)").font(.caption).foregroundColor(.secondary)
+        }
+    }
+
+    private func infoTab(_ volume: ContainerVolume) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                header(volume)
+
+                DetailSection(title: "Configuration", icon: "internaldrive") {
+                    DetailRow(label: "Contents", value: users.isEmpty
+                              ? (volume.displayContents.map { $0 == "empty" ? "Empty filesystem — nothing was ever written to it" : $0 } ?? "-")
+                              : "Mounted — see the Contents tab for a live view")
+                    DetailRow(label: "Used on disk", value: volume.displayAllocated ?? "-")
+                    DetailRow(label: "Capacity", value: volume.displayCapacity)
+                    DetailRow(label: "Driver", value: volume.driver ?? "-")
+                    DetailRow(label: "Filesystem", value: volume.format ?? "-")
+                    DetailRow(label: "Created", value: volume.creationDate.map(ContainerInfoView.formatDate) ?? "-")
+                    if volume.isAnonymous {
+                        Text(users.isEmpty
+                             ? "Created automatically by an image VOLUME directive when a container was created; that container has since been deleted, so nothing can reach this data any more. Prune Unused Volumes removes it."
+                             : "Created automatically by an image VOLUME directive for the container that mounts it.")
+                            .font(.caption2).foregroundColor(.secondary)
+                    }
+                    Text("Capacity is the maximum the sparse backing image can grow to; \"Used on disk\" is what it actually occupies on your Mac.")
+                        .font(.caption2).foregroundColor(.secondary)
+                }
+
+                DetailSection(title: "Backing File", icon: "doc") {
+                    HStack(spacing: 6) {
+                        Text(volume.source ?? "-")
+                            .font(InfoTextStyle.monospacedValueFont)
+                            .textSelection(.enabled)
+                            .lineLimit(2)
+                            .truncationMode(.middle)
+                        if let source = volume.source, FileManager.default.fileExists(atPath: source) {
+                            Button {
+                                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: source)])
+                            } label: { Image(systemName: "folder") }
+                            .buttonStyle(.borderless)
+                            .help("Reveal in Finder")
+                        }
+                    }
+                }
+
+                DetailSection(title: "Mounted By", icon: "shippingbox") {
+                    if users.isEmpty {
+                        Text("No container mounts this volume.").font(.callout).foregroundColor(.secondary)
+                    } else {
+                        ForEach(users) { container in
+                            Button {
+                                appNavigation.showContainer(id: container.id, tab: 0)
+                            } label: {
+                                HStack(spacing: 10) {
+                                    StatusDot(isRunning: container.status == .running)
+                                    Text(container.name).font(.callout.weight(.medium))
+                                    if let mount = container.volumeMounts.first(where: { $0.name == volume.name }) {
+                                        Text(mount.destination).font(.caption.monospaced()).foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right").font(.caption).foregroundColor(.secondary)
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.vertical, 2)
+                        }
+                    }
+                }
+
+                HStack(spacing: 10) {
+                    Button { selectedTab = 1 } label: {
+                        Label("Browse Contents", systemImage: "folder")
+                    }
+                    .actionButtonStyle(prominent: true)
+                    Button {
+                        appNavigation.requestNewContainer(prefill: NewContainerPrefill(volume: volume.name))
+                    } label: {
+                        Label("Create Container with This Volume", systemImage: "plus")
+                    }
+                    .actionButtonStyle()
+                    Button(role: .destructive) { showingDeleteConfirmation = true } label: {
+                        Label("Delete Volume", systemImage: "trash")
+                    }
+                    .disabled(!users.isEmpty || containerManager.updatingVolumeIDs.contains(volume.name))
+                    .help(users.isEmpty ? "" : "Delete the containers that mount it first.")
+                    Spacer()
+                }
+                Text("Mount it in a new container as `\(volume.name):/path`. The data lives only inside the ext4 image, so the way to read it is from a container.")
+                    .font(.caption2).foregroundColor(.secondary)
+            }
+            .padding()
+        }
+    }
+
+    private func contentsTab(_ volume: ContainerVolume) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                header(volume)
+                VolumeContentsBrowser(volume: volume)
+            }
+            .padding()
+        }
+    }
+}
+
+// MARK: - Container "Volumes" tab
+
+/// The Volumes tab of a container: one contents browser per mounted named
+/// volume (picker when there are several), rooted at the volume — the
+/// mount point is shown so the user knows where it appears inside the
+/// container.
+struct ContainerVolumesView: View {
+    let details: ContainerDetails?
+    let containerId: String
+    let volumeMounts: [VolumeMount]
+    @EnvironmentObject var containerManager: ContainerizationWrapper
+    @EnvironmentObject var appNavigation: AppNavigation
+    @State private var selectedVolume: String = ""
+
+    private var currentMount: VolumeMount? {
+        volumeMounts.first { $0.name == selectedVolume } ?? volumeMounts.first
+    }
+    private var currentVolume: ContainerVolume? {
+        currentMount.flatMap { mount in containerManager.volumes.first { $0.name == mount.name } }
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                if let details {
+                    ContainerHeaderView(details: details)
+                } else {
+                    ProgressView("Loading Details...").padding(.top, 12)
+                }
+
+                if let mount = currentMount {
+                    HStack(spacing: 12) {
+                        if volumeMounts.count > 1 {
+                            Picker("Volume", selection: Binding(
+                                get: { currentMount?.name ?? "" },
+                                set: { selectedVolume = $0 }
+                            )) {
+                                ForEach(volumeMounts, id: \.self) { m in
+                                    Text("\(m.name)  →  \(m.destination)").tag(m.name)
+                                }
+                            }
+                            .frame(maxWidth: 420)
+                        } else {
+                            Text("Volume").font(.headline)
+                            Text(mount.name).font(InfoTextStyle.monospacedValueFont)
+                            Text("mounted at").foregroundColor(.secondary).font(.caption)
+                            Text(mount.destination).font(InfoTextStyle.monospacedValueFont)
+                        }
+                        Spacer()
+                        Button {
+                            appNavigation.showVolume(name: mount.name)
+                        } label: {
+                            Label("Volume Page", systemImage: "internaldrive")
+                        }
+                        .controlSize(.small)
+                    }
+
+                    if let volume = currentVolume {
+                        VolumeContentsBrowser(volume: volume)
+                    } else {
+                        HStack(spacing: 8) {
+                            ProgressView().scaleEffect(0.7)
+                            Text("Waiting for the volume list…").font(.caption).foregroundColor(.secondary)
+                        }
+                    }
+                } else {
+                    Text("This container mounts no named volumes.").foregroundColor(.secondary)
+                }
+            }
+            .padding()
         }
     }
 }

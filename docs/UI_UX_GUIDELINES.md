@@ -300,6 +300,12 @@ Keep iContainer clear, predictable, and fast for container operations, with mini
 - Show volumes as "<used> used of <capacity>" — capacity alone (the
   provisioned maximum of the sparse image, 512 GB for anonymous ones) reads
   as disk used and alarms people. Use base-2 units for both.
+- Give contents prominence: the volume page is tabbed *Info / Contents*
+  (same `AccentTabPicker` as containers), and a container that mounts
+  named volumes gains a *Volumes* tab (index 4, after Logs, so ⌘1–⌘4 keep
+  their meaning) hosting the same `VolumeContentsBrowser`. The Mounts
+  block in Info stays a summary (mount point, kind, link to the volume
+  page) plus a *Browse* button into that tab.
 - Sidebar rows get one caption line with the identifying value first
   (subnet, usage) so it is never the part that gets truncated; rows carry
   a context menu with the same actions as the detail page (create a

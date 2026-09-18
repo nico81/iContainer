@@ -236,7 +236,11 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
   — labelled "Capacity" (base-2) in the UI. Real usage comes from the file
   system: `refreshVolumes` reads `totalFileAllocatedSize` of each
   `volume.img` into `ContainerVolume.allocatedBytes` ("Used on disk").
-- `VolumeContentsBrowser` (volume detail) lists a path with `ls -lA`:
+- `VolumeDetailView` is tabbed (Info / Contents); `ContainerDetailView`
+  appends a "Volumes" tab (index 4) when `Container.volumeMounts` is
+  non-empty, hosting `ContainerVolumesView` (picker across mounts + the
+  browser) and falling back to Info if the last volume disappears.
+- `VolumeContentsBrowser` (volume detail and container Volumes tab) lists a path with `ls -lA`:
   `ContainerizationWrapper.listVolumeDirectory` uses `container exec` in a
   running container that mounts the volume (its mount point comes from
   `Container.volumeMounts`), else `container run --rm -v <vol>:/__vol:ro

@@ -12,6 +12,9 @@ struct ContainerInfoView: View {
     let fallback: ContainerInspectFallback?
     let isLoading: Bool
     let formattedInspectOutput: String
+    /// Set when the container mounts named volumes: switches to the Volumes
+    /// tab, where the contents browser lives.
+    var onBrowseVolumes: (() -> Void)? = nil
     @EnvironmentObject var appNavigation: AppNavigation
 
     var body: some View {
@@ -158,17 +161,21 @@ struct ContainerInfoView: View {
                         VStack(alignment: .leading, spacing: 16) {
                             DetailSection(title: "Mounts", icon: "externaldrive") {
                                 let mounts = details.configuration?.mounts
-                                if let mounts, !mounts.isEmpty {
-                                    MountLinksView(
-                                        mounts: mounts.map {
-                                            MountDisplay(source: $0.source ?? "-", destination: $0.destination ?? "-")
-                                        }
-                                    )
-                                } else if let fallbackMounts = fallback?.mounts, !fallbackMounts.isEmpty {
+                                // Prefer the untyped fallback: it knows the mount kind
+                                // and the volume name, which the typed decoder drops.
+                                if let fallbackMounts = fallback?.mounts, !fallbackMounts.isEmpty {
                                     MountLinksView(
                                         mounts: fallbackMounts.map {
                                             MountDisplay(source: $0.source, destination: $0.destination, kind: $0.kind, volumeName: $0.volumeName)
-                                        }
+                                        },
+                                        onBrowseVolumes: onBrowseVolumes
+                                    )
+                                } else if let mounts, !mounts.isEmpty {
+                                    MountLinksView(
+                                        mounts: mounts.map {
+                                            MountDisplay(source: $0.source ?? "-", destination: $0.destination ?? "-")
+                                        },
+                                        onBrowseVolumes: onBrowseVolumes
                                     )
                                 } else {
                                     Text("No volumes mounted.")
@@ -314,6 +321,7 @@ struct MountDisplay: Hashable {
 /// `fallback?.mounts` paths in `ContainerInfoView`.
 private struct MountLinksView: View {
     let mounts: [MountDisplay]
+    var onBrowseVolumes: (() -> Void)? = nil
     @EnvironmentObject var appNavigation: AppNavigation
 
     var body: some View {
@@ -323,6 +331,12 @@ private struct MountLinksView: View {
                     HStack(alignment: .top, spacing: 8) {
                         if let volumeName = mount.volumeName {
                             MountPathColumn(title: "Volume", value: volumeName)
+                            if let onBrowseVolumes {
+                                Button("Browse") { onBrowseVolumes() }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                                    .help("Browse the volume's contents in the Volumes tab")
+                            }
                             Button {
                                 appNavigation.showVolume(name: volumeName)
                             } label: {
@@ -330,7 +344,7 @@ private struct MountLinksView: View {
                             }
                             .buttonStyle(.bordered)
                             .controlSize(.small)
-                            .help("Show volume")
+                            .help("Show volume page")
                         } else if mount.kind == "tmpfs" {
                             MountPathColumn(title: "tmpfs", value: "in-memory")
                         } else {
