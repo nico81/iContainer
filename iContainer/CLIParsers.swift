@@ -242,31 +242,55 @@ nonisolated enum CLIParsers {
             if let keyValue = keyValuePair(from: trimmed) {
                 let key = keyValue.key.lowercased()
                 let value = keyValue.value
-
-                if isDataRootKey(key) {
-                    details.dataRoot = value
-                    continue
-                }
-                if isInstallRootKey(key) {
-                    details.installRoot = value
-                    continue
-                }
-                if isVersionKey(key) {
+                // Explicit keys first: CLI ≥ 1.4 dotted table, plus every
+                // legacy spelling we've seen (0.x `dataRoot`, 1.0–1.3
+                // `apiserver.version container-apiserver version X (build: …,
+                // commit: …)`). A recognised key never falls through to the
+                // substring heuristics below.
+                switch key {
+                case "status":
+                    details.status = value; continue
+                case "server.version", "apiserver.version", "container-apiserver.version", "version":
                     let parsed = parseVersionAndCommit(from: value)
-                    if let version = parsed.version {
-                        details.version = version
-                    }
-                    if let commit = parsed.commit {
-                        details.commit = commit
-                    }
+                    details.version = parsed.version ?? value
+                    if let commit = parsed.commit { details.commit = commit }
                     continue
-                }
-                if isCommitKey(key) {
-                    details.commit = value
-                    continue
+                case "server.commit", "apiserver.commit", "container-apiserver.commit", "commit":
+                    details.commit = value; continue
+                case "server.build", "apiserver.build", "container-apiserver.build":
+                    details.build = value; continue
+                case "server.appname":
+                    details.serverAppName = value; continue
+                case "client.version":
+                    details.clientVersion = parseVersionAndCommit(from: value).version ?? value; continue
+                case "client.commit":
+                    details.clientCommit = value; continue
+                case "client.build":
+                    details.clientBuild = value; continue
+                case "host.os", "host.operatingsystem":
+                    details.hostOS = value; continue
+                case "host.architecture", "host.arch":
+                    details.hostArchitecture = value; continue
+                case "host.cpus":
+                    details.hostCPUs = Int(value); continue
+                case "paths.approot", "approot", "dataroot", "data_root":
+                    details.dataRoot = value; continue
+                case "paths.installroot", "installroot", "install_root":
+                    details.installRoot = value; continue
+                case "paths.logroot", "logroot", "log_root":
+                    details.logRoot = value; continue
+                case "containers.total":
+                    details.containersTotal = Int(value); continue
+                case "containers.running":
+                    details.containersRunning = Int(value); continue
+                case "images.total":
+                    details.imagesTotal = Int(value); continue
+                default:
+                    break
                 }
             }
 
+            // Heuristics for free-form / unknown layouts.
             if lowercased.contains("data root") || lowercased.contains("data_root") || lowercased.contains("dataroot") {
                 details.dataRoot = valueAfterColon(in: trimmed) ?? details.dataRoot
                 continue
@@ -296,6 +320,27 @@ nonisolated enum CLIParsers {
         }
 
         return details
+    }
+
+    /// Parses `container system df --format json` (CLI ≥ 1.4):
+    /// `{"images": {total, active, sizeInBytes, reclaimable}, "containers":
+    /// {…}, "volumes": {…}}`. Returns `nil` on malformed input.
+    static func parseSystemDiskUsage(_ output: String) -> SystemDiskUsage? {
+        guard let data = output.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data, options: []),
+              let root = json as? [String: Any] else { return nil }
+        func category(_ key: String) -> DiskUsageCategory? {
+            guard let dict = root[key] as? [String: Any] else { return nil }
+            return DiskUsageCategory(
+                total: Int(intValue(dict, keys: ["total"]) ?? 0),
+                active: Int(intValue(dict, keys: ["active"]) ?? 0),
+                sizeBytes: intValue(dict, keys: ["sizeInBytes", "size"]) ?? 0,
+                reclaimableBytes: intValue(dict, keys: ["reclaimable", "reclaimableInBytes"]) ?? 0
+            )
+        }
+        let usage = SystemDiskUsage(images: category("images"), containers: category("containers"), volumes: category("volumes"))
+        guard usage.images != nil || usage.containers != nil || usage.volumes != nil else { return nil }
+        return usage
     }
 
     // MARK: - Log truncation
@@ -389,22 +434,6 @@ nonisolated enum CLIParsers {
         }
         let trimmedValue = value.trimmingCharacters(in: .whitespaces)
         return trimmedValue.isEmpty ? nil : (key, trimmedValue)
-    }
-
-    private static func isDataRootKey(_ key: String) -> Bool {
-        key == "dataroot" || key == "data_root" || key == "approot"
-    }
-
-    private static func isInstallRootKey(_ key: String) -> Bool {
-        key == "installroot" || key == "install_root"
-    }
-
-    private static func isVersionKey(_ key: String) -> Bool {
-        key == "apiserver.version" || key == "container-apiserver.version" || key == "version"
-    }
-
-    private static func isCommitKey(_ key: String) -> Bool {
-        key == "apiserver.commit" || key == "container-apiserver.commit" || key == "commit"
     }
 
     private static func parseVersionAndCommit(from value: String) -> (version: String?, commit: String?) {

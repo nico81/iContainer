@@ -345,7 +345,9 @@ struct ContentView: View {
             selection = .service
         }
         .onReceive(serviceManager.$serviceDetails) { details in
-            releaseChecker.updateInstalledVersion(details?.version)
+            // The client is the installed binary; the server lags until the
+            // service is restarted after an upgrade.
+            releaseChecker.updateInstalledVersion(details?.clientVersion ?? details?.version)
         }
         .task {
             await releaseChecker.checkForUpdateIfNeeded()

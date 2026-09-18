@@ -48,6 +48,9 @@ struct ServiceDetailView: View {
             if selectedTab == 2 && serviceManager.serviceLogs.isEmpty {
                 await serviceManager.refreshServiceLogs()
             }
+            if selectedTab == 0 && serviceManager.isServiceRunning && serviceManager.diskUsage == nil {
+                await serviceManager.refreshDiskUsage()
+            }
         }
         .confirmationDialog(
             "Remove saved registry credentials?",
@@ -73,7 +76,20 @@ struct ServiceDetailView: View {
                 if let details = serviceManager.serviceDetails {
                     // Version Info
                     DetailSection(title: "Version Information", icon: "info.circle") {
-                        DetailRow(label: "Version", value: details.version ?? "-")
+                        DetailRow(label: "Service", value: versionText(details.version, build: details.build, appName: details.serverAppName))
+                        if let clientVersion = details.clientVersion {
+                            DetailRow(label: "CLI", value: versionText(clientVersion, build: details.clientBuild, appName: nil))
+                        }
+                        if details.hasVersionMismatch {
+                            HStack(spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                                Text("The installed CLI (\(details.clientVersion ?? "?")) is newer than the running service (\(details.version ?? "?")). Restart the service to update it.")
+                                    .font(.caption)
+                                Spacer()
+                            }
+                            .padding(.top, 2)
+                        }
                         DetailRow(label: "Commit", value: details.commit ?? "-", isMonospaced: true)
                         DetailRow(label: "Latest release", value: latestReleaseText)
                         if releaseChecker.isUpdateAvailable {
@@ -93,32 +109,27 @@ struct ServiceDetailView: View {
                         }
                     }
                     
+                    if details.hostOS != nil || details.hostArchitecture != nil || details.hostCPUs != nil {
+                        DetailSection(title: "Host", icon: "desktopcomputer") {
+                            if let os = details.hostOS { DetailRow(label: "macOS", value: os) }
+                            if let arch = details.hostArchitecture { DetailRow(label: "Architecture", value: arch) }
+                            if let cpus = details.hostCPUs { DetailRow(label: "CPUs", value: "\(cpus)") }
+                        }
+                    }
+
                     // Paths
                     DetailSection(title: "System Paths", icon: "folder") {
                         DetailRow(label: "Install Root", value: details.installRoot ?? "-", isMonospaced: true)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Data Root")
-                                .font(InfoTextStyle.labelFont)
-                                .foregroundColor(.secondary)
-                                .fontWeight(.medium)
-                            HStack(spacing: 6) {
-                                Text(details.dataRoot ?? "-")
-                                    .font(InfoTextStyle.monospacedValueFont)
-                                    .textSelection(.enabled)
-                                if let dataRoot = details.dataRoot,
-                                   !dataRoot.isEmpty, dataRoot != "-" {
-                                    Button {
-                                        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: dataRoot)])
-                                    } label: {
-                                        Image(systemName: "folder")
-                                    }
-                                    .buttonStyle(.borderless)
-                                    .help("Reveal in Finder")
-                                }
-                            }
+                        pathRow(label: "Data Root", path: details.dataRoot)
+                        if let logRoot = details.logRoot, !logRoot.isEmpty {
+                            pathRow(label: "Log Root", path: logRoot)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 2)
+                    }
+
+                    diskUsageSection(details)
+
+                    if !serviceManager.systemProperties.isEmpty {
+                        serviceDefaultsSection
                     }
 
                     DetailSection(title: "Status Output", icon: "terminal") {
@@ -497,6 +508,139 @@ struct ServiceDetailView: View {
     /// timestamp/logger prefix in front doesn't matter.
     private static func isXPCNoise(_ line: String) -> Bool {
         line.localizedCaseInsensitiveContains("xpc client handler")
+    }
+
+    // MARK: - Info tab helpers
+
+    private func versionText(_ version: String?, build: String?, appName: String?) -> String {
+        guard let version, !version.isEmpty else { return "-" }
+        var text = version
+        if let build, !build.isEmpty, build != "release" { text += " (\(build))" }
+        if let appName, !appName.isEmpty { text += " · \(appName)" }
+        return text
+    }
+
+    private func pathRow(label: String, path: String?) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(InfoTextStyle.labelFont)
+                .foregroundColor(.secondary)
+                .fontWeight(.medium)
+            HStack(spacing: 6) {
+                Text(path ?? "-")
+                    .font(InfoTextStyle.monospacedValueFont)
+                    .textSelection(.enabled)
+                if let path, !path.isEmpty, path != "-", FileManager.default.fileExists(atPath: path) {
+                    Button {
+                        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+                    } label: {
+                        Image(systemName: "folder")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Reveal in Finder")
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 2)
+    }
+
+    /// Counts come from `system status` (every poll); sizes from `system df`
+    /// (on demand, CLI ≥ 1.4). Hidden entirely on CLIs that report neither.
+    @ViewBuilder
+    private func diskUsageSection(_ details: ServiceDetails) -> some View {
+        let usage = serviceManager.diskUsage
+        if usage != nil || details.containersTotal != nil || details.imagesTotal != nil {
+            DetailSection(title: "Storage", icon: "internaldrive") {
+                if let usage {
+                    diskUsageRow("Images", usage.images, fallbackTotal: details.imagesTotal)
+                    diskUsageRow("Containers", usage.containers, fallbackTotal: details.containersTotal, running: details.containersRunning)
+                    diskUsageRow("Volumes", usage.volumes, fallbackTotal: nil)
+                } else {
+                    if let total = details.containersTotal {
+                        DetailRow(label: "Containers", value: details.containersRunning.map { "\(total) (\($0) running)" } ?? "\(total)")
+                    }
+                    if let images = details.imagesTotal {
+                        DetailRow(label: "Images", value: "\(images)")
+                    }
+                }
+                HStack(spacing: 8) {
+                    Button {
+                        Task { await serviceManager.refreshDiskUsage() }
+                    } label: {
+                        if serviceManager.isLoadingDiskUsage {
+                            ProgressView().scaleEffect(0.6).frame(width: 14, height: 14)
+                        } else {
+                            Label(usage == nil ? "Measure disk usage" : "Refresh", systemImage: "arrow.clockwise")
+                        }
+                    }
+                    .controlSize(.small)
+                    .disabled(serviceManager.isLoadingDiskUsage)
+                    if let checked = serviceManager.diskUsageCheckedAt {
+                        Text("Measured \(checked.formatted(date: .omitted, time: .shortened))")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                }
+                .padding(.top, 4)
+                if usage != nil {
+                    Text("Reclaimable = not used by any container. Sourced from `container system df`.")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+    }
+
+    private func diskUsageRow(_ label: String, _ category: DiskUsageCategory?, fallbackTotal: Int?, running: Int? = nil) -> some View {
+        let value: String
+        if let category {
+            let size = ByteCountFormatter.string(fromByteCount: category.sizeBytes, countStyle: .file)
+            let reclaimable = ByteCountFormatter.string(fromByteCount: category.reclaimableBytes, countStyle: .file)
+            let pct = category.sizeBytes > 0 ? Int((Double(category.reclaimableBytes) / Double(category.sizeBytes) * 100).rounded()) : 0
+            let activeText = running.map { "\($0) running" } ?? "\(category.active) in use"
+            value = "\(category.total) total · \(activeText) · \(size) · \(reclaimable) reclaimable (\(pct)%)"
+        } else if let fallbackTotal {
+            value = "\(fallbackTotal)"
+        } else {
+            value = "-"
+        }
+        return DetailRow(label: label, value: value)
+    }
+
+    /// The `[section] key = value` defaults from `container system property
+    /// list`, grouped the way the CLI groups them. Only sections that carry
+    /// values are shown; digests and long URLs are trimmed for display but
+    /// remain selectable in full.
+    private var serviceDefaultsSection: some View {
+        let props = serviceManager.systemProperties
+        let order = ["container", "build", "machine", "kernel", "vminit", "dns", "registry", "network"]
+        let titles = ["container": "Container defaults", "build": "Build defaults", "machine": "Machine defaults",
+                      "kernel": "Kernel", "vminit": "VM init", "dns": "DNS", "registry": "Registry", "network": "Network"]
+        let sections = order.filter { !(props[$0] ?? [:]).isEmpty } + props.keys.filter { !order.contains($0) && !(props[$0] ?? [:]).isEmpty }.sorted()
+        return DetailSection(title: "Service Defaults", icon: "slider.horizontal.3") {
+            ForEach(sections, id: \.self) { section in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(titles[section] ?? section.capitalized)
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.top, 4)
+                    ForEach((props[section] ?? [:]).keys.sorted(), id: \.self) { key in
+                        DetailRow(label: key, value: props[section]?[key] ?? "", isMonospaced: ["binaryPath", "digest", "url", "image"].contains(key))
+                    }
+                }
+            }
+            if (props["dns"] ?? [:])["domain"] == nil {
+                Text("No DNS domain: containers can only reach each other by IP. Add `[dns]` / `domain = \"test\"` to ~/.config/container/config.toml, restart the service, then run `sudo container system dns create test` once.")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .padding(.top, 4)
+            }
+            Text("Edit these in ~/.config/container/config.toml (or `container system property set`); changes apply after a service restart.")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .padding(.top, 2)
+        }
     }
 
     private var latestReleaseText: String {

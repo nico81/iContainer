@@ -50,6 +50,15 @@ class ServiceManager: ObservableObject {
     }
 
     @Published var serviceDetails: ServiceDetails?
+    /// `container system property list` as `[section: [key: value]]`,
+    /// refreshed with every status check (cheap). Feeds the "Service
+    /// Defaults" section of the Info tab.
+    @Published var systemProperties: [String: [String: String]] = [:]
+    /// `container system df` — fetched on demand (it walks the image store,
+    /// ~1 s), not on every poll.
+    @Published var diskUsage: SystemDiskUsage?
+    @Published var diskUsageCheckedAt: Date?
+    @Published var isLoadingDiskUsage = false
 
     func isContainerServiceRunning() async -> Bool {
         guard Self.resolveCLIPath() != nil else {
@@ -67,10 +76,40 @@ class ServiceManager: ObservableObject {
                 self.lastStatusOutput = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
                 self.lastCheckedAt = Date()
             }
+            if result.status == 0 {
+                await refreshSystemProperties()
+            }
             return result.status == 0
         } catch {
             return false
         }
+    }
+
+    /// Reads `container system property list` (TOML, cheap).
+    func refreshSystemProperties() async {
+        guard Self.resolveCLIPath() != nil else { return }
+        let result = try? await Task.detached(priority: .utility) {
+            try Self.runCommandBlocking(["system", "property", "list"])
+        }.value
+        guard let result, result.status == 0 else { return }
+        let parsed = CLIParsers.parseSystemProperties(result.output)
+        if parsed != systemProperties { systemProperties = parsed }
+    }
+
+    /// Reads `container system df --format json` (CLI ≥ 1.4). Older CLIs
+    /// fail the command; `diskUsage` then stays `nil` and the section is
+    /// hidden.
+    func refreshDiskUsage() async {
+        guard Self.resolveCLIPath() != nil, !isLoadingDiskUsage else { return }
+        isLoadingDiskUsage = true
+        defer { isLoadingDiskUsage = false }
+        let result = try? await Task.detached(priority: .utility) {
+            try Self.runCommandBlocking(["system", "df", "--format", "json"])
+        }.value
+        guard let result, result.status == 0,
+              let parsed = CLIParsers.parseSystemDiskUsage(result.output) else { return }
+        diskUsage = parsed
+        diskUsageCheckedAt = Date()
     }
     
     private func parseServiceDetails(_ output: String) async {
@@ -265,9 +304,52 @@ private extension ServiceManager {
     }
 }
 
+/// Everything `container system status` tells us. Field names follow the
+/// CLI ≥ 1.4 table (`server.*`, `client.*`, `host.*`, `paths.*`,
+/// `containers.*`, `images.*`); older CLIs only fill `version`, `commit`,
+/// `dataRoot` and `installRoot`.
 nonisolated struct ServiceDetails: Sendable, Equatable {
-    var dataRoot: String?
-    var installRoot: String?
+    var status: String?
+    /// API server version (the running service). Kept as `version` because
+    /// it's what the rest of the app has always shown.
     var version: String?
     var commit: String?
+    var build: String?
+    var serverAppName: String?
+    /// The `container` CLI binary that answered. Differs from `version`
+    /// right after a CLI upgrade until the service is restarted.
+    var clientVersion: String?
+    var clientCommit: String?
+    var clientBuild: String?
+    var hostOS: String?
+    var hostArchitecture: String?
+    var hostCPUs: Int?
+    var dataRoot: String?
+    var installRoot: String?
+    var logRoot: String?
+    var containersTotal: Int?
+    var containersRunning: Int?
+    var imagesTotal: Int?
+
+    /// `true` when the CLI and the service report different versions —
+    /// the usual state right after upgrading the CLI without restarting.
+    var hasVersionMismatch: Bool {
+        guard let clientVersion, let version else { return false }
+        return clientVersion != version
+    }
+}
+
+/// One row of `container system df`.
+nonisolated struct DiskUsageCategory: Sendable, Equatable {
+    var total: Int
+    var active: Int
+    var sizeBytes: Int64
+    var reclaimableBytes: Int64
+}
+
+/// `container system df --format json` (CLI ≥ 1.4).
+nonisolated struct SystemDiskUsage: Sendable, Equatable {
+    var images: DiskUsageCategory?
+    var containers: DiskUsageCategory?
+    var volumes: DiskUsageCategory?
 }

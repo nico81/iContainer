@@ -61,6 +61,125 @@ final class CLIParsersServiceTests: XCTestCase {
         XCTAssertEqual(details.version, "9.9.9")
     }
 
+    /// Real `container system status` output from CLI 1.4.1 (2026-09-18):
+    /// dotted `server.*` / `client.*` / `host.*` / `paths.*` keys plus
+    /// container/image counters. `paths.logRoot` is present but empty.
+    func testParseServiceDetailsCLI141Table() {
+        let output = #"""
+FIELD               VALUE
+status              running
+client.version      1.4.1
+client.build        release
+client.commit       9a8917ca2da5cd6ba059b9ba5ca5a74892e9bb7d
+host.os             Version 27.0 (Build 26A428)
+host.architecture   arm64
+host.cpus           8
+server.version      1.4.1
+server.build        release
+server.commit       9a8917ca2da5cd6ba059b9ba5ca5a74892e9bb7d
+server.appName      container-apiserver
+paths.appRoot       /Users/nico/Library/Application Support/com.apple.container/
+paths.installRoot   /usr/local/
+paths.logRoot       
+containers.total    10
+containers.running  0
+images.total        27
+"""#
+        let d = CLIParsers.parseServiceDetails(output)
+        XCTAssertEqual(d.status, "running")
+        XCTAssertEqual(d.version, "1.4.1")
+        XCTAssertEqual(d.build, "release")
+        XCTAssertEqual(d.commit, "9a8917ca2da5cd6ba059b9ba5ca5a74892e9bb7d")
+        XCTAssertEqual(d.serverAppName, "container-apiserver")
+        XCTAssertEqual(d.clientVersion, "1.4.1")
+        XCTAssertEqual(d.clientBuild, "release")
+        XCTAssertEqual(d.clientCommit, "9a8917ca2da5cd6ba059b9ba5ca5a74892e9bb7d")
+        XCTAssertEqual(d.hostOS, "Version 27.0 (Build 26A428)")
+        XCTAssertEqual(d.hostArchitecture, "arm64")
+        XCTAssertEqual(d.hostCPUs, 8)
+        XCTAssertEqual(d.dataRoot, "/Users/nico/Library/Application Support/com.apple.container/")
+        XCTAssertEqual(d.installRoot, "/usr/local/")
+        XCTAssertNil(d.logRoot, "empty value must stay nil")
+        XCTAssertEqual(d.containersTotal, 10)
+        XCTAssertEqual(d.containersRunning, 0)
+        XCTAssertEqual(d.imagesTotal, 27)
+        XCTAssertFalse(d.hasVersionMismatch)
+    }
+
+    /// CLI 1.0–1.3 layout: long-form `apiserver.version` line carrying build
+    /// and commit, `appRoot` instead of `paths.appRoot`.
+    func testParseServiceDetailsCLI13Table() {
+        let output = """
+        FIELD              VALUE
+        status             running
+        appRoot            /Users/demo/Library/Application Support/com.apple.container/
+        installRoot        /usr/local/
+        logRoot            
+        apiserver.version  container-apiserver version 1.3.1 (build: release, commit: a9a62e2)
+        apiserver.commit   a9a62e28f6beb88940122a3d7b286f2d5ae8053a
+        apiserver.build    release
+        """
+        let d = CLIParsers.parseServiceDetails(output)
+        XCTAssertEqual(d.status, "running")
+        XCTAssertEqual(d.version, "1.3.1")
+        XCTAssertEqual(d.commit, "a9a62e28f6beb88940122a3d7b286f2d5ae8053a", "full-hash row wins over the inline short hash")
+        XCTAssertEqual(d.build, "release")
+        XCTAssertEqual(d.dataRoot, "/Users/demo/Library/Application Support/com.apple.container/")
+        XCTAssertEqual(d.installRoot, "/usr/local/")
+        XCTAssertNil(d.clientVersion)
+        XCTAssertNil(d.hostCPUs)
+    }
+
+    func testVersionMismatchDetection() {
+        var d = ServiceDetails()
+        d.version = "1.3.1"; d.clientVersion = "1.4.1"
+        XCTAssertTrue(d.hasVersionMismatch)
+        d.version = "1.4.1"
+        XCTAssertFalse(d.hasVersionMismatch)
+    }
+
+    // MARK: - system df
+
+    func testParseSystemDiskUsage() {
+        let output = #"""
+{
+  "containers" : {
+    "active" : 0,
+    "reclaimable" : 6646988800,
+    "sizeInBytes" : 6646988800,
+    "total" : 10
+  },
+  "images" : {
+    "active" : 10,
+    "reclaimable" : 6789218304,
+    "sizeInBytes" : 16901574656,
+    "total" : 27
+  },
+  "volumes" : {
+    "active" : 0,
+    "reclaimable" : 555122688,
+    "sizeInBytes" : 555122688,
+    "total" : 8
+  }
+}
+"""#
+        let usage = CLIParsers.parseSystemDiskUsage(output)
+        XCTAssertEqual(usage?.images?.total, 27)
+        XCTAssertEqual(usage?.images?.active, 10)
+        XCTAssertEqual(usage?.images?.sizeBytes, 16_901_574_656)
+        XCTAssertEqual(usage?.images?.reclaimableBytes, 6_789_218_304)
+        XCTAssertEqual(usage?.containers?.total, 10)
+        XCTAssertEqual(usage?.containers?.active, 0)
+        XCTAssertEqual(usage?.volumes?.total, 8)
+        XCTAssertEqual(usage?.volumes?.sizeBytes, 555_122_688)
+    }
+
+    func testParseSystemDiskUsageMalformed() {
+        XCTAssertNil(CLIParsers.parseSystemDiskUsage(""))
+        XCTAssertNil(CLIParsers.parseSystemDiskUsage("[]"))
+        XCTAssertNil(CLIParsers.parseSystemDiskUsage("{\"unrelated\": 1}"))
+    }
+
     // MARK: - container CLI path selection
 
     func testContainerCLIPathCandidatesPreferAppleSiliconHomebrewOverLegacyUsrLocal() {
