@@ -1442,7 +1442,7 @@ struct ContentView: View {
                     }
                 }
 
-                Text("Applying settings recreates the container with the new configuration.")
+                Text("Applying settings recreates the container with the new configuration. Files written inside the container (anything not on a volume or bind mount) are lost — the container CLI does not create volumes for an image's VOLUME directives.")
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }

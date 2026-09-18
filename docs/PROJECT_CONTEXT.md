@@ -223,6 +223,14 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
   the CLI errors otherwise (`cannot delete subnet … with referring
   containers`). `container network prune` / `volume prune` remove unused
   ones; volume prune also removes anonymous volumes and their data.
+- **CLI ≥ 1.x does not auto-create anonymous volumes** for image `VOLUME`
+  directives (verified 2026-09-18 on 1.4.1: `create`+`start` of
+  `postgres:latest` adds no mount and no volume). Data written to such
+  paths lives in the container's writable layer and is lost when the
+  container is deleted/recreated (Edit!). The anonymous volumes seen on
+  Nico's Mac date from the 0.x CLI (March 2026), which did create them.
+  Machines keep their disk under `plugin-state/machine-apiserver/machines/`,
+  not as volumes.
 - Volume `sizeInBytes` is the provisioned capacity of the sparse
   `volume.img` (anonymous volumes default to 512 GiB), not the space used
   — labelled "Capacity" (base-2) in the UI. Real usage comes from the file
