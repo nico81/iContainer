@@ -225,7 +225,14 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
   ones; volume prune also removes anonymous volumes and their data.
 - Volume `sizeInBytes` is the provisioned capacity of the sparse
   `volume.img` (anonymous volumes default to 512 GiB), not the space used
-  — labelled "Capacity" in the UI.
+  — labelled "Capacity" (base-2) in the UI. Real usage comes from the file
+  system: `refreshVolumes` reads `totalFileAllocatedSize` of each
+  `volume.img` into `ContainerVolume.allocatedBytes` ("Used on disk").
+- Row context menus and detail actions call
+  `AppNavigation.requestNewContainer(prefill:)` with a `NewContainerPrefill`
+  (network → create-sheet Network picker; volume → `<name>:/data` appended
+  to the Volumes editor). The create sheet's Network picker lists user
+  networks (empty = default) and passes `--network` + `--dns-search`.
 - `container volume create -s <size>` accepts K/M/G/T/P suffixes; names for
   both resources are validated client-side (letters, digits, `-`, `_`, `.`).
 

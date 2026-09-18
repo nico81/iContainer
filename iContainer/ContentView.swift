@@ -89,6 +89,8 @@ struct ContentView: View {
     @State private var createEnvKey = ""
     @State private var createEnvValue = ""
     @State private var createStartAfterCreation = true
+    /// Empty = the CLI's default network.
+    @State private var createNetwork = ""
     @State private var isCreatingContainer = false
     @State private var createErrorMessage: String?
     @State private var shouldOpenRegistryLoginAfterCreateSheet = false
@@ -418,6 +420,15 @@ struct ContentView: View {
             createErrorMessage = nil
             containerManager.lastErrorMessage = nil
             containerManager.lastBuildOutput = nil
+            if let prefill = appNavigation.newContainerPrefill {
+                if let network = prefill.network { createNetwork = network }
+                if let volume = prefill.volume {
+                    let mapping = "\(volume):/data"
+                    createVolumes = createVolumes.isEmpty ? mapping : createVolumes + ", " + mapping
+                    isCreateOptionsExpanded = true
+                }
+                appNavigation.newContainerPrefill = nil
+            }
             showingCreateContainerSheet = true
         }
         .onReceive(appNavigation.$pullImageRequestID.dropFirst()) { _ in
@@ -1096,6 +1107,23 @@ struct ContentView: View {
 
                 DisclosureGroup("Container Options", isExpanded: $isCreateOptionsExpanded) {
                     VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 10) {
+                            Text("Network").font(.headline)
+                            Picker("", selection: $createNetwork) {
+                                Text("default").tag("")
+                                ForEach(containerManager.networks.filter { !$0.isBuiltin }) { network in
+                                    Text(network.ipv4Subnet.map { "\(network.name)  (\($0))" } ?? network.name).tag(network.name)
+                                }
+                            }
+                            .labelsHidden()
+                            .frame(maxWidth: 320)
+                            Spacer()
+                        }
+                        if !createNetwork.isEmpty, let domain = containerManager.systemDNSDomain {
+                            Text("Containers on \(createNetwork) reach each other as <name> or <name>.\(domain).")
+                                .font(.caption2).foregroundColor(.secondary)
+                        }
+
                         MappingPairsEditor(
                             title: "Ports",
                             mappingsText: $createPorts,
@@ -1538,13 +1566,18 @@ struct ContentView: View {
                 }
             }
 
-            let createdId = await containerManager.createContainer(
+            var spec = ContainerCreateSpec(
                 image: image,
                 name: name.isEmpty ? nil : name,
                 publishedPorts: ports,
                 volumes: volumes,
                 environment: env
             )
+            if !createNetwork.isEmpty {
+                spec.network = createNetwork
+                if let domain = containerManager.systemDNSDomain { spec.dnsSearchDomains = [domain] }
+            }
+            let createdId = await containerManager.createContainer(spec: spec)
             isCreatingContainer = false
 
             if let message = containerManager.lastErrorMessage {
@@ -1591,6 +1624,7 @@ struct ContentView: View {
         createEnvKey = ""
         createEnvValue = ""
         createStartAfterCreation = true
+        createNetwork = ""
         createDockerContainerID = nil
         createDockerTranslation = nil
         createDockerImageStrategy = .importFromDocker

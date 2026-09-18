@@ -19,7 +19,15 @@ The format follows Keep a Changelog, and versions use semantic versioning:
   disabled while the resource is in use, with the reason shown. Prune
   unused networks / volumes from the section header menu (honours the
   "confirm prune" setting). *New Network…* / *New Volume…* join the toolbar
-  `+` menu.
+  `+` menu. Rows have context menus (*Create Container on This Network… /
+  with This Volume…*, copy subnet / gateway / name / mount mapping, reveal
+  the backing file, delete) and the detail pages carry the same actions.
+  Volumes show their **real disk usage** ("68 MB used of 512 GB") read from
+  the sparse backing image — the CLI only reports the provisioned capacity.
+- **Network picker in the create sheet** (Container Options): new
+  containers can join a user-defined network instead of always landing on
+  `default`; the service DNS domain is passed as search domain so they
+  resolve each other by name.
 - **Service Info for container CLI 1.4.** The Info tab now shows Service
   and CLI versions separately (with a warning when the CLI was upgraded but
   the service not yet restarted), the host (macOS build, architecture,

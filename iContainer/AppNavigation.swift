@@ -23,6 +23,14 @@ struct ContainerCommandRequest: Equatable {
     let id: Int
 }
 
+/// Values a "Create Container…" entry point wants pre-filled in the sheet
+/// (e.g. the network or volume it was invoked from).
+struct NewContainerPrefill: Equatable {
+    var network: String? = nil
+    /// Volume name; the sheet turns it into `<name>:/data` for the user to adjust.
+    var volume: String? = nil
+}
+
 @MainActor
 final class AppNavigation: ObservableObject {
     @Published var containerTarget: ContainerNavigationTarget?
@@ -35,6 +43,8 @@ final class AppNavigation: ObservableObject {
     // Each property is a monotonically increasing counter so `ContentView`
     // can react to repeated triggers via `onReceive`.
     @Published var newContainerRequestID = 0
+    /// Consumed by `ContentView` together with `newContainerRequestID`.
+    @Published var newContainerPrefill: NewContainerPrefill?
     @Published var pullImageRequestID = 0
     @Published var registryLoginRequestID = 0
     @Published var refreshRequestID = 0
@@ -75,7 +85,8 @@ final class AppNavigation: ObservableObject {
         activateApp()
     }
 
-    func requestNewContainer() {
+    func requestNewContainer(prefill: NewContainerPrefill? = nil) {
+        newContainerPrefill = prefill
         newContainerRequestID &+= 1
         activateApp()
     }

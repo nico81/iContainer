@@ -297,8 +297,13 @@ Keep iContainer clear, predictable, and fast for container operations, with mini
 - Prune is a header context-menu action with a confirmation that spells out
   what is removed (volume prune deletes data); it honours the confirm-prune
   preference like the other destructive confirmations.
-- Call the volume size "Capacity": it's the provisioned maximum of the
-  sparse image, not usage. Don't present it as disk used.
+- Show volumes as "<used> used of <capacity>" — capacity alone (the
+  provisioned maximum of the sparse image, 512 GB for anonymous ones) reads
+  as disk used and alarms people. Use base-2 units for both.
+- Sidebar rows get one caption line with the identifying value first
+  (subnet, usage) so it is never the part that gets truncated; rows carry
+  a context menu with the same actions as the detail page (create a
+  container from here, copy, reveal, delete).
 
 ## Docker interop
 - Docker features are additive and read-only towards Docker: never start,

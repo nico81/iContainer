@@ -74,7 +74,9 @@ final class NetworkVolumeParserTests: XCTestCase {
         XCTAssertEqual(named.name, "pgdata")
         XCTAssertFalse(named.isAnonymous)
         XCTAssertEqual(named.displayName, "pgdata")
-        XCTAssertEqual(named.displayCapacity, ByteCountFormatter.string(fromByteCount: 10_737_418_240, countStyle: .file))
+        XCTAssertEqual(named.displayCapacity, ByteCountFormatter.string(fromByteCount: 10_737_418_240, countStyle: .binary))
+        XCTAssertNil(named.allocatedBytes, "parser leaves disk usage to the wrapper")
+        XCTAssertEqual(named.displayUsage, "\(named.displayCapacity) capacity")
     }
 
     func testParseListsMalformed() {

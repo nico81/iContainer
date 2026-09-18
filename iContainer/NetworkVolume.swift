@@ -37,6 +37,10 @@ nonisolated struct ContainerVolume: Identifiable, Equatable, Sendable {
     let capacityBytes: Int64?
     /// Path of the backing `volume.img` on the host.
     let source: String?
+    /// Blocks actually allocated to the sparse backing image — the real
+    /// disk usage. Filled by the wrapper from the file system (not part of
+    /// the CLI output); `nil` when the file can't be read.
+    var allocatedBytes: Int64? = nil
 
     /// Volumes the CLI created implicitly for an image `VOLUME` directive
     /// (UUID names, label `com.apple.container.resource.anonymous`).
@@ -50,9 +54,23 @@ nonisolated struct ContainerVolume: Identifiable, Equatable, Sendable {
         return String(name[..<dash]) + "…"
     }
 
+    /// Provisioned capacity, base-2 (a 512 GiB image reads "512 GB", not
+    /// "549.76 GB").
     var displayCapacity: String {
         guard let capacityBytes, capacityBytes > 0 else { return "-" }
-        return ByteCountFormatter.string(fromByteCount: capacityBytes, countStyle: .file)
+        return ByteCountFormatter.string(fromByteCount: capacityBytes, countStyle: .binary)
+    }
+
+    var displayAllocated: String? {
+        guard let allocatedBytes else { return nil }
+        return ByteCountFormatter.string(fromByteCount: allocatedBytes, countStyle: .binary)
+    }
+
+    /// `"68 MB used of 512 GB"` when the backing file is readable, else the
+    /// capacity alone.
+    var displayUsage: String {
+        if let used = displayAllocated { return "\(used) used of \(displayCapacity)" }
+        return "\(displayCapacity) capacity"
     }
 }
 

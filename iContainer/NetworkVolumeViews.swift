@@ -9,10 +9,20 @@ import AppKit
 struct NetworkRowView: View {
     let network: ContainerNetwork
     @EnvironmentObject var containerManager: ContainerizationWrapper
+    @EnvironmentObject var appNavigation: AppNavigation
     @State private var showingDeleteConfirmation = false
     @State private var isDeleting = false
 
     private var attached: [Container] { containerManager.containers(onNetwork: network.name) }
+    private var canDelete: Bool { !network.isBuiltin && attached.isEmpty }
+
+    private var attachedText: String {
+        switch attached.count {
+        case 0: return "no containers"
+        case 1: return attached[0].name
+        default: return "\(attached.count) containers"
+        }
+    }
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
@@ -28,13 +38,12 @@ struct NetworkRowView: View {
                             .background(Color.secondary.opacity(0.12), in: Capsule())
                     }
                 }
-                HStack(spacing: 16) {
-                    if let subnet = network.ipv4Subnet {
-                        Label(subnet, systemImage: "network").font(.caption)
-                    }
-                    Label(attached.isEmpty ? "no containers" : "\(attached.count) container\(attached.count == 1 ? "" : "s")", systemImage: "shippingbox")
-                        .font(.caption)
-                }
+                // One line, subnet first so it never gets cut.
+                Text("\(network.ipv4Subnet ?? "no subnet") · \(attachedText)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
@@ -51,14 +60,34 @@ struct NetworkRowView: View {
                         }
                         .actionButtonStyle(circular: true)
                         .controlSize(.small)
-                        .disabled(!attached.isEmpty)
-                        .help(attached.isEmpty ? "Delete network" : "In use by \(attached.map(\.name).joined(separator: ", "))")
+                        .disabled(!canDelete)
+                        .help(canDelete ? "Delete network" : "In use by \(attached.map(\.name).joined(separator: ", "))")
                     }
                 }
             }
             .frame(width: 60)
         }
         .padding(.vertical, 4)
+        .contextMenu {
+            Button {
+                appNavigation.requestNewContainer(prefill: NewContainerPrefill(network: network.name))
+            } label: {
+                Label("Create Container on This Network…", systemImage: "plus")
+            }
+            Divider()
+            if let subnet = network.ipv4Subnet {
+                Button("Copy Subnet (\(subnet))") { copyToPasteboard(subnet) }
+            }
+            if let gateway = network.ipv4Gateway {
+                Button("Copy Gateway (\(gateway))") { copyToPasteboard(gateway) }
+            }
+            Button("Copy Name") { copyToPasteboard(network.name) }
+            if !network.isBuiltin {
+                Divider()
+                Button("Delete Network…", role: .destructive) { showingDeleteConfirmation = true }
+                    .disabled(!canDelete)
+            }
+        }
         .confirmationDialog("Delete Network?", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
                 isDeleting = true
@@ -78,10 +107,19 @@ struct NetworkRowView: View {
 struct VolumeRowView: View {
     let volume: ContainerVolume
     @EnvironmentObject var containerManager: ContainerizationWrapper
+    @EnvironmentObject var appNavigation: AppNavigation
     @State private var showingDeleteConfirmation = false
     @State private var isDeleting = false
 
     private var users: [Container] { containerManager.containers(usingVolume: volume.name) }
+
+    private var usersText: String {
+        switch users.count {
+        case 0: return volume.isAnonymous ? "unused" : "not mounted"
+        case 1: return "mounted by \(users[0].name)"
+        default: return "mounted by \(users.count) containers"
+        }
+    }
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
@@ -97,14 +135,14 @@ struct VolumeRowView: View {
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1)
                             .background(Color.secondary.opacity(0.12), in: Capsule())
-                            .help("Created automatically for an image VOLUME directive")
+                            .help("Created automatically for an image VOLUME directive; the container that used it is gone")
                     }
                 }
-                HStack(spacing: 16) {
-                    Label(volume.displayCapacity, systemImage: "internaldrive").font(.caption)
-                    Label(users.isEmpty ? "not mounted" : "\(users.count) container\(users.count == 1 ? "" : "s")", systemImage: "shippingbox")
-                        .font(.caption)
-                }
+                Text("\(volume.displayUsage) · \(usersText)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
@@ -129,6 +167,26 @@ struct VolumeRowView: View {
             .frame(width: 60)
         }
         .padding(.vertical, 4)
+        .contextMenu {
+            Button {
+                appNavigation.requestNewContainer(prefill: NewContainerPrefill(volume: volume.name))
+            } label: {
+                Label("Create Container with This Volume…", systemImage: "plus")
+            }
+            if let source = volume.source, FileManager.default.fileExists(atPath: source) {
+                Button {
+                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: source)])
+                } label: {
+                    Label("Reveal Backing File in Finder", systemImage: "folder")
+                }
+            }
+            Divider()
+            Button("Copy Name") { copyToPasteboard(volume.name) }
+            Button("Copy Mount Mapping (\(volume.displayName):/data)") { copyToPasteboard("\(volume.name):/data") }
+            Divider()
+            Button("Delete Volume…", role: .destructive) { showingDeleteConfirmation = true }
+                .disabled(!users.isEmpty)
+        }
         .confirmationDialog("Delete Volume?", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
                 isDeleting = true
@@ -142,6 +200,11 @@ struct VolumeRowView: View {
             Text("Delete volume \"\(volume.name)\"? All data stored in it is lost. This cannot be undone.")
         }
     }
+}
+
+private func copyToPasteboard(_ text: String) {
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(text, forType: .string)
 }
 
 // MARK: - Detail views
@@ -194,19 +257,24 @@ struct NetworkDetailView: View {
 
                     attachedContainersSection(attached, emptyText: "No containers are attached to this network.")
 
-                    if !network.isBuiltin {
-                        HStack {
+                    HStack(spacing: 10) {
+                        Button {
+                            appNavigation.requestNewContainer(prefill: NewContainerPrefill(network: network.name))
+                        } label: {
+                            Label("Create Container on This Network", systemImage: "plus")
+                        }
+                        .actionButtonStyle(prominent: true)
+                        if !network.isBuiltin {
                             Button(role: .destructive) { showingDeleteConfirmation = true } label: {
                                 Label("Delete Network", systemImage: "trash")
                             }
                             .disabled(!attached.isEmpty || containerManager.updatingNetworkIDs.contains(network.name))
-                            if !attached.isEmpty {
-                                Text("Detach or delete the attached containers first.")
-                                    .font(.caption).foregroundColor(.secondary)
-                            }
-                            Spacer()
+                            .help(attached.isEmpty ? "" : "Detach or delete the attached containers first.")
                         }
+                        Spacer()
                     }
+                    Text("Containers join a network when they are created (`--network`); an existing container can't be moved to another network.")
+                        .font(.caption2).foregroundColor(.secondary)
                 }
                 .padding()
             } else {
@@ -279,6 +347,7 @@ struct VolumeDetailView: View {
                     }
 
                     DetailSection(title: "Configuration", icon: "internaldrive") {
+                        DetailRow(label: "Used on disk", value: volume.displayAllocated ?? "-")
                         DetailRow(label: "Capacity", value: volume.displayCapacity)
                         DetailRow(label: "Driver", value: volume.driver ?? "-")
                         DetailRow(label: "Filesystem", value: volume.format ?? "-")
@@ -287,7 +356,7 @@ struct VolumeDetailView: View {
                             Text("Created automatically for an image VOLUME directive. Anonymous volumes are removed by Prune when no container references them.")
                                 .font(.caption2).foregroundColor(.secondary)
                         }
-                        Text("Capacity is the provisioned size of the backing image, not the space currently used.")
+                        Text("Capacity is the maximum the sparse backing image can grow to; \"Used on disk\" is what it actually occupies on your Mac.")
                             .font(.caption2).foregroundColor(.secondary)
                     }
 
@@ -330,16 +399,22 @@ struct VolumeDetailView: View {
                         }
                     }
 
-                    HStack {
+                    HStack(spacing: 10) {
+                        Button {
+                            appNavigation.requestNewContainer(prefill: NewContainerPrefill(volume: volume.name))
+                        } label: {
+                            Label("Create Container with This Volume", systemImage: "plus")
+                        }
+                        .actionButtonStyle(prominent: true)
                         Button(role: .destructive) { showingDeleteConfirmation = true } label: {
                             Label("Delete Volume", systemImage: "trash")
                         }
                         .disabled(!users.isEmpty || containerManager.updatingVolumeIDs.contains(volume.name))
-                        if !users.isEmpty {
-                            Text("Delete the containers that mount it first.").font(.caption).foregroundColor(.secondary)
-                        }
+                        .help(users.isEmpty ? "" : "Delete the containers that mount it first.")
                         Spacer()
                     }
+                    Text("Mount it in a new container as `\(volume.name):/path`. The data lives only inside the ext4 image, so the way to read it is from a container.")
+                        .font(.caption2).foregroundColor(.secondary)
                 }
                 .padding()
             } else {

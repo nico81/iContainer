@@ -117,14 +117,28 @@ class ContainerizationWrapper: ObservableObject {
     func refreshVolumes() async {
         do {
             let output = try await runCommand(["volume", "list", "--format", "json"])
-            let parsed = CLIParsers.parseVolumeList(output).sorted { lhs, rhs in
+            var parsed = CLIParsers.parseVolumeList(output).sorted { lhs, rhs in
                 if lhs.isAnonymous != rhs.isAnonymous { return !lhs.isAnonymous }
                 return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
             }
+            // Real disk usage of each sparse volume.img (allocated blocks),
+            // read off the file system — the CLI only reports capacity.
+            let sources = parsed.map(\.source)
+            let allocated = await Task.detached(priority: .utility) {
+                sources.map { $0.flatMap(Self.allocatedSize(ofFileAt:)) }
+            }.value
+            for index in parsed.indices { parsed[index].allocatedBytes = allocated[index] }
             if volumes != parsed { volumes = parsed }
         } catch {
             logger.error("Failed to refresh volumes: \(error)")
         }
+    }
+
+    nonisolated private static func allocatedSize(ofFileAt path: String) -> Int64? {
+        let values = try? URL(fileURLWithPath: path).resourceValues(forKeys: [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey])
+        if let total = values?.totalFileAllocatedSize { return Int64(total) }
+        if let single = values?.fileAllocatedSize { return Int64(single) }
+        return nil
     }
 
     /// Containers (user + infrastructure) attached to `network`.
