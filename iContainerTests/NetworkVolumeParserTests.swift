@@ -105,4 +105,44 @@ final class NetworkVolumeParserTests: XCTestCase {
         XCTAssertEqual(empty.networks, [])
         XCTAssertEqual(empty.volumes, [])
     }
+
+    // MARK: - ext4 superblock
+
+    private func superblock(inodes: UInt32, freeInodes: UInt32, magic: UInt16 = 0xEF53, mountCount: UInt16 = 0, wtime: UInt32 = 1_772_997_984) -> Data {
+        var data = Data(count: 1024)
+        func put32(_ v: UInt32, _ o: Int) { withUnsafeBytes(of: v.littleEndian) { data.replaceSubrange(o..<o+4, with: $0) } }
+        func put16(_ v: UInt16, _ o: Int) { withUnsafeBytes(of: v.littleEndian) { data.replaceSubrange(o..<o+2, with: $0) } }
+        put32(inodes, 0x00); put32(134_217_728, 0x04); put32(132_112_349, 0x0C); put32(freeInodes, 0x10)
+        put32(2, 0x18) // 4096-byte blocks
+        put32(wtime, 0x30); put16(mountCount, 0x34); put16(magic, 0x38)
+        return data
+    }
+
+    func testExt4SuperblockFreshFilesystemIsEmpty() throws {
+        // Values captured from one of the real anonymous volume.img files.
+        let sb = try XCTUnwrap(Ext4Superblock(superblockData: superblock(inodes: 33_554_432, freeInodes: 33_554_421)))
+        XCTAssertEqual(sb.inodesInUse, 11)
+        XCTAssertEqual(sb.itemCount, 0)
+        XCTAssertTrue(sb.isEmpty)
+        XCTAssertEqual(sb.blockSize, 4096)
+        XCTAssertEqual(sb.mountCount, 0)
+        XCTAssertNotNil(sb.lastWriteTime)
+    }
+
+    func testExt4SuperblockCountsUserItems() throws {
+        let sb = try XCTUnwrap(Ext4Superblock(superblockData: superblock(inodes: 1000, freeInodes: 1000 - 11 - 42, mountCount: 3)))
+        XCTAssertEqual(sb.itemCount, 42)
+        XCTAssertFalse(sb.isEmpty)
+        var volume = CLIParsers.parseVolumeList(Self.volumesJSON)[1]
+        volume.ext4ItemCount = sb.itemCount
+        XCTAssertEqual(volume.displayContents, "42 items")
+        volume.ext4ItemCount = 0
+        XCTAssertEqual(volume.displayContents, "empty")
+    }
+
+    func testExt4SuperblockRejectsBadMagicOrShortData() {
+        XCTAssertNil(Ext4Superblock(superblockData: superblock(inodes: 10, freeInodes: 0, magic: 0x1234)))
+        XCTAssertNil(Ext4Superblock(superblockData: Data(count: 16)))
+        XCTAssertNil(Ext4Superblock.read(fromImageAt: "/nonexistent/volume.img"))
+    }
 }

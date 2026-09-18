@@ -124,10 +124,16 @@ class ContainerizationWrapper: ObservableObject {
             // Real disk usage of each sparse volume.img (allocated blocks),
             // read off the file system — the CLI only reports capacity.
             let sources = parsed.map(\.source)
-            let allocated = await Task.detached(priority: .utility) {
-                sources.map { $0.flatMap(Self.allocatedSize(ofFileAt:)) }
+            let fileInfo = await Task.detached(priority: .utility) {
+                sources.map { source -> (allocated: Int64?, items: Int?) in
+                    guard let source else { return (nil, nil) }
+                    return (Self.allocatedSize(ofFileAt: source), Ext4Superblock.read(fromImageAt: source)?.itemCount)
+                }
             }.value
-            for index in parsed.indices { parsed[index].allocatedBytes = allocated[index] }
+            for index in parsed.indices {
+                parsed[index].allocatedBytes = fileInfo[index].allocated
+                parsed[index].ext4ItemCount = fileInfo[index].items
+            }
             if volumes != parsed { volumes = parsed }
         } catch {
             logger.error("Failed to refresh volumes: \(error)")

@@ -852,9 +852,10 @@ struct ContentView: View {
         let orphaned = orphanedAnonymousVolumes
         if !orphaned.isEmpty {
             let bytes = orphaned.compactMap(\.allocatedBytes).reduce(0, +)
+            let allEmpty = orphaned.allSatisfy { $0.ext4ItemCount == 0 }
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange)
-                Text("\(orphaned.count) orphaned anonymous volume\(orphaned.count == 1 ? "" : "s")\(bytes > 0 ? " · \(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .binary)) on disk" : "")")
+                Text("\(orphaned.count) orphaned anonymous volume\(orphaned.count == 1 ? "" : "s")\(allEmpty ? ", all empty" : "")\(bytes > 0 ? " · \(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .binary)) on disk" : "")")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()

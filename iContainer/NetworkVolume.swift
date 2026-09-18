@@ -41,6 +41,10 @@ nonisolated struct ContainerVolume: Identifiable, Equatable, Sendable {
     /// disk usage. Filled by the wrapper from the file system (not part of
     /// the CLI output); `nil` when the file can't be read.
     var allocatedBytes: Int64? = nil
+    /// Number of files and directories inside the ext4 image (inodes in
+    /// use minus the 11 reserved ones), read from the superblock by the
+    /// wrapper. `0` means a freshly formatted, never-written filesystem.
+    var ext4ItemCount: Int? = nil
 
     /// Volumes the CLI created implicitly for an image `VOLUME` directive
     /// (UUID names, label `com.apple.container.resource.anonymous`).
@@ -71,6 +75,67 @@ nonisolated struct ContainerVolume: Identifiable, Equatable, Sendable {
     var displayUsage: String {
         if let used = displayAllocated { return "\(used) used of \(displayCapacity)" }
         return "\(displayCapacity) capacity"
+    }
+
+    /// `"empty"` / `"3 items"` from the ext4 superblock, `nil` if unreadable.
+    var displayContents: String? {
+        guard let ext4ItemCount else { return nil }
+        return ext4ItemCount <= 0 ? "empty" : "\(ext4ItemCount) item\(ext4ItemCount == 1 ? "" : "s")"
+    }
+}
+
+/// The few ext4 superblock fields we care about. Pure; the wrapper feeds it
+/// the 1024 bytes at offset 1024 of a `volume.img`.
+nonisolated struct Ext4Superblock: Equatable, Sendable {
+    static let magic: UInt16 = 0xEF53
+    /// Inodes ext4 reserves for itself (root, journal, …) on every fresh fs.
+    static let reservedInodes = 11
+
+    let inodesTotal: UInt32
+    let inodesFree: UInt32
+    let blocksTotal: UInt32
+    let blocksFree: UInt32
+    let blockSize: Int
+    let lastWriteTime: Date?
+    let mountCount: Int
+
+    var inodesInUse: Int { Int(inodesTotal) - Int(inodesFree) }
+    /// Files + directories created by users of the volume.
+    var itemCount: Int { max(0, inodesInUse - Self.reservedInodes) }
+    var isEmpty: Bool { itemCount == 0 }
+
+    /// Parses a superblock; `nil` when the magic doesn't match or the data
+    /// is too short.
+    init?(superblockData data: Data) {
+        guard data.count >= 0x3A else { return nil }
+        func u32(_ offset: Int) -> UInt32 {
+            data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: offset, as: UInt32.self) }.littleEndian
+        }
+        func u16(_ offset: Int) -> UInt16 {
+            data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: offset, as: UInt16.self) }.littleEndian
+        }
+        guard u16(0x38) == Self.magic else { return nil }
+        inodesTotal = u32(0x00)
+        blocksTotal = u32(0x04)
+        blocksFree = u32(0x0C)
+        inodesFree = u32(0x10)
+        blockSize = 1024 << Int(u32(0x18))
+        let wtime = u32(0x30)
+        lastWriteTime = wtime == 0 ? nil : Date(timeIntervalSince1970: TimeInterval(wtime))
+        mountCount = Int(u16(0x34))
+    }
+
+    /// Reads the superblock of an ext2/3/4 image file at `path`.
+    static func read(fromImageAt path: String) -> Ext4Superblock? {
+        guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
+        defer { try? handle.close() }
+        do {
+            try handle.seek(toOffset: 1024)
+            guard let data = try handle.read(upToCount: 1024) else { return nil }
+            return Ext4Superblock(superblockData: data)
+        } catch {
+            return nil
+        }
     }
 }
 
