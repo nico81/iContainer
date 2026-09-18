@@ -44,6 +44,9 @@ nonisolated struct ContainerVolume: Identifiable, Equatable, Sendable {
     /// Number of files and directories inside the ext4 image (inodes in
     /// use minus the 11 reserved ones), read from the superblock by the
     /// wrapper. `0` means a freshly formatted, never-written filesystem.
+    /// Only meaningful while no container mounts the volume: the guest
+    /// kernel writes the superblock back lazily (verified: a running
+    /// postgres with 39 MB in the volume still read as 0 items).
     var ext4ItemCount: Int? = nil
 
     /// Volumes the CLI created implicitly for an image `VOLUME` directive

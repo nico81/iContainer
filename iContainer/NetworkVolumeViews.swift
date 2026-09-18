@@ -138,7 +138,10 @@ struct VolumeRowView: View {
                             .help("Created automatically by an image VOLUME directive when a container was created; deleting that container does not remove the volume")
                     }
                 }
-                Text([volume.displayUsage, volume.displayContents, usersText].compactMap { $0 }.joined(separator: " · "))
+                // The ext4 superblock on the host is only consistent while the
+                // volume is unmounted (the guest kernel flushes it lazily), so
+                // the content count is shown for idle volumes only.
+                Text([volume.displayUsage, users.isEmpty ? volume.displayContents : nil, usersText].compactMap { $0 }.joined(separator: " · "))
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
@@ -347,7 +350,9 @@ struct VolumeDetailView: View {
                     }
 
                     DetailSection(title: "Configuration", icon: "internaldrive") {
-                        DetailRow(label: "Contents", value: volume.displayContents.map { $0 == "empty" ? "Empty filesystem — nothing was ever written to it" : $0 } ?? "-")
+                        DetailRow(label: "Contents", value: users.isEmpty
+                                  ? (volume.displayContents.map { $0 == "empty" ? "Empty filesystem — nothing was ever written to it" : $0 } ?? "-")
+                                  : "Mounted — inspect from inside the container (the on-disk index is updated when the container stops)")
                         DetailRow(label: "Used on disk", value: volume.displayAllocated ?? "-")
                         DetailRow(label: "Capacity", value: volume.displayCapacity)
                         DetailRow(label: "Driver", value: volume.driver ?? "-")
