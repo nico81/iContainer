@@ -23,6 +23,10 @@ class ContainerizationWrapper: ObservableObject {
     @Published var updatingImageIDs: Set<String> = []
     @Published var machines: [Machine] = []
     @Published var updatingMachineIDs: Set<String> = []
+    @Published var networks: [ContainerNetwork] = []
+    @Published var updatingNetworkIDs: Set<String> = []
+    @Published var volumes: [ContainerVolume] = []
+    @Published var updatingVolumeIDs: Set<String> = []
     @Published var lastErrorMessage: String?
     @Published var lastBuildOutput: String?
     @Published var registryAuthState: RegistryAuthState = .unknown
@@ -89,8 +93,151 @@ class ContainerizationWrapper: ObservableObject {
         await sampleServiceStats()
         await refreshImages()
         await refreshMachines()
+        await refreshNetworks()
+        await refreshVolumes()
         await refreshRegistryAuthStatus()
         await refreshSystemDNSDomain()
+    }
+
+    // MARK: - Networks & Volumes
+
+    func refreshNetworks() async {
+        do {
+            let output = try await runCommand(["network", "list", "--format", "json"])
+            let parsed = CLIParsers.parseNetworkList(output).sorted { lhs, rhs in
+                if lhs.isBuiltin != rhs.isBuiltin { return lhs.isBuiltin }
+                return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
+            if networks != parsed { networks = parsed }
+        } catch {
+            logger.error("Failed to refresh networks: \(error)")
+        }
+    }
+
+    func refreshVolumes() async {
+        do {
+            let output = try await runCommand(["volume", "list", "--format", "json"])
+            let parsed = CLIParsers.parseVolumeList(output).sorted { lhs, rhs in
+                if lhs.isAnonymous != rhs.isAnonymous { return !lhs.isAnonymous }
+                return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
+            if volumes != parsed { volumes = parsed }
+        } catch {
+            logger.error("Failed to refresh volumes: \(error)")
+        }
+    }
+
+    /// Containers (user + infrastructure) attached to `network`.
+    func containers(onNetwork network: String) -> [Container] {
+        (containers + systemContainers).filter { $0.networkNames.contains(network) }
+    }
+
+    /// Containers (user + infrastructure) that mount `volume`.
+    func containers(usingVolume volume: String) -> [Container] {
+        (containers + systemContainers).filter { $0.volumeNames.contains(volume) }
+    }
+
+    /// `true` when the CLI would refuse to delete the network (attached
+    /// containers, or the builtin default).
+    func isNetworkInUse(_ network: ContainerNetwork) -> Bool {
+        network.isBuiltin || !containers(onNetwork: network.name).isEmpty
+    }
+
+    func isVolumeInUse(_ volume: ContainerVolume) -> Bool {
+        !containers(usingVolume: volume.name).isEmpty
+    }
+
+    func createNetwork(name: String) async -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { lastErrorMessage = "Network name is required."; return false }
+        lastErrorMessage = nil
+        do {
+            _ = try await runCommand(["network", "create", trimmed])
+            await refreshNetworks()
+            return true
+        } catch {
+            logger.error("Failed to create network: \(error)")
+            lastErrorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    /// `size` is passed through to `-s` (e.g. `10G`); `nil` uses the CLI default.
+    func createVolume(name: String, size: String?) async -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { lastErrorMessage = "Volume name is required."; return false }
+        lastErrorMessage = nil
+        var args = ["volume", "create"]
+        if let size = size?.trimmingCharacters(in: .whitespacesAndNewlines), !size.isEmpty {
+            args += ["-s", size]
+        }
+        args.append(trimmed)
+        do {
+            _ = try await runCommand(args)
+            await refreshVolumes()
+            return true
+        } catch {
+            logger.error("Failed to create volume: \(error)")
+            lastErrorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func deleteNetwork(name: String) async {
+        updatingNetworkIDs.insert(name)
+        defer { updatingNetworkIDs.remove(name) }
+        lastErrorMessage = nil
+        do {
+            _ = try await runCommand(["network", "delete", name])
+            await refreshNetworks()
+        } catch {
+            logger.error("Failed to delete network: \(error)")
+            lastErrorMessage = error.localizedDescription
+        }
+    }
+
+    func deleteVolume(name: String) async {
+        updatingVolumeIDs.insert(name)
+        defer { updatingVolumeIDs.remove(name) }
+        lastErrorMessage = nil
+        do {
+            _ = try await runCommand(["volume", "delete", name])
+            await refreshVolumes()
+        } catch {
+            logger.error("Failed to delete volume: \(error)")
+            lastErrorMessage = error.localizedDescription
+        }
+    }
+
+    /// `container network prune` — removes networks with no attached
+    /// containers. Returns the CLI output (the removed names) or `nil` on
+    /// failure.
+    func pruneNetworks() async -> String? {
+        lastErrorMessage = nil
+        do {
+            let output = try await runCommand(["network", "prune"])
+            await refreshNetworks()
+            return output
+        } catch {
+            logger.error("Failed to prune networks: \(error)")
+            lastErrorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
+    /// `container volume prune` — removes volumes no container references,
+    /// including anonymous ones. Data is lost. Returns the CLI output.
+    func pruneVolumes() async -> String? {
+        lastErrorMessage = nil
+        do {
+            let output = try await runCommand(["volume", "prune"])
+            await refreshVolumes()
+            return output
+        } catch {
+            logger.error("Failed to prune volumes: \(error)")
+            lastErrorMessage = error.localizedDescription
+            return nil
+        }
     }
 
     /// Reads `[dns] domain` from `container system property list`.
@@ -267,13 +414,27 @@ class ContainerizationWrapper: ObservableObject {
             let output = try await runCommand(["list", "--all", "--format", "json"])
             if let data = output.data(using: .utf8) {
                 let decoded = try JSONDecoder().decode([ContainerCLI].self, from: data)
+                // Network / named-volume attachments come from the untyped
+                // JSON (their shape is nested and version-dependent).
+                var attachments: [String: (networks: [String], volumes: [String])] = [:]
+                if let raw = try? JSONSerialization.jsonObject(with: data, options: []) as? [[String: Any]] {
+                    for entry in raw {
+                        let configuration = entry["configuration"] as? [String: Any] ?? [:]
+                        if let id = configuration["id"] as? String {
+                            attachments[id] = CLIParsers.parseContainerAttachments(entry)
+                        }
+                    }
+                }
                 func toContainer(_ cli: ContainerCLI) -> Container {
-                    Container(
-                        id: cli.configuration?.id ?? "",
-                        name: cli.configuration?.hostname ?? cli.configuration?.id ?? "",
+                    let id = cli.configuration?.id ?? ""
+                    return Container(
+                        id: id,
+                        name: cli.configuration?.hostname ?? id,
                         status: cli.status == "running" ? .running : .stopped,
                         image: cli.configuration?.image?.reference,
-                        ipAddress: cli.networks?.first?.resolvedAddress
+                        ipAddress: cli.networks?.first?.resolvedAddress,
+                        networkNames: attachments[id]?.networks ?? [],
+                        volumeNames: attachments[id]?.volumes ?? []
                     )
                 }
                 let sortByStatusThenName: (Container, Container) -> Bool = { lhs, rhs in

@@ -128,6 +128,8 @@ final class SettingsManager: ObservableObject {
         static let containersExpanded = "settings.containersExpanded"
         static let machinesExpanded = "settings.machinesExpanded"
         static let imagesExpanded = "settings.imagesExpanded"
+        static let networksExpanded = "settings.networksExpanded"
+        static let volumesExpanded = "settings.volumesExpanded"
     }
 
     nonisolated enum Defaults {
@@ -305,7 +307,8 @@ final class SettingsManager: ObservableObject {
             Keys.customCliPath, Keys.customDockerCliPath, Keys.defaultRegistry, Keys.quitBehavior,
             Keys.hideXPCNoiseInLogs, Keys.sidebarTinted,
             Keys.sidebarSectionOrder, Keys.containerStatusFilter, Keys.machineStatusFilter,
-            Keys.containersExpanded, Keys.machinesExpanded, Keys.imagesExpanded
+            Keys.containersExpanded, Keys.machinesExpanded, Keys.imagesExpanded,
+            Keys.networksExpanded, Keys.volumesExpanded
         ]
         for key in allKeys { store.removeObject(forKey: key) }
 

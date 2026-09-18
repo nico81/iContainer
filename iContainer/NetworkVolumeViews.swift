@@ -1,0 +1,491 @@
+import SwiftUI
+import AppKit
+
+// MARK: - Sidebar rows
+
+/// One network in the sidebar. Delete is hidden for the builtin `default`
+/// network and disabled while containers are attached (the CLI refuses
+/// either way — we just don't offer a button that can only fail).
+struct NetworkRowView: View {
+    let network: ContainerNetwork
+    @EnvironmentObject var containerManager: ContainerizationWrapper
+    @State private var showingDeleteConfirmation = false
+    @State private var isDeleting = false
+
+    private var attached: [Container] { containerManager.containers(onNetwork: network.name) }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(network.name)
+                        .font(.headline)
+                    if network.isBuiltin {
+                        Text("builtin")
+                            .font(.caption2)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Color.secondary.opacity(0.12), in: Capsule())
+                    }
+                }
+                HStack(spacing: 16) {
+                    if let subnet = network.ipv4Subnet {
+                        Label(subnet, systemImage: "network").font(.caption)
+                    }
+                    Label(attached.isEmpty ? "no containers" : "\(attached.count) container\(attached.count == 1 ? "" : "s")", systemImage: "shippingbox")
+                        .font(.caption)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+
+            HStack(spacing: 12) {
+                ZStack {
+                    if isDeleting || containerManager.updatingNetworkIDs.contains(network.name) {
+                        ProgressView().scaleEffect(0.7).frame(width: 16, height: 16)
+                    } else if !network.isBuiltin {
+                        Button(role: .destructive) {
+                            showingDeleteConfirmation = true
+                        } label: {
+                            Image(systemName: "trash").frame(width: 16, height: 16).padding(3)
+                        }
+                        .actionButtonStyle(circular: true)
+                        .controlSize(.small)
+                        .disabled(!attached.isEmpty)
+                        .help(attached.isEmpty ? "Delete network" : "In use by \(attached.map(\.name).joined(separator: ", "))")
+                    }
+                }
+            }
+            .frame(width: 60)
+        }
+        .padding(.vertical, 4)
+        .confirmationDialog("Delete Network?", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                isDeleting = true
+                Task {
+                    await containerManager.deleteNetwork(name: network.name)
+                    isDeleting = false
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Delete network \"\(network.name)\"? Containers created later with this network name will fail to start until it is recreated.")
+        }
+    }
+}
+
+/// One volume in the sidebar. Delete is disabled while a container mounts it.
+struct VolumeRowView: View {
+    let volume: ContainerVolume
+    @EnvironmentObject var containerManager: ContainerizationWrapper
+    @State private var showingDeleteConfirmation = false
+    @State private var isDeleting = false
+
+    private var users: [Container] { containerManager.containers(usingVolume: volume.name) }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(volume.displayName)
+                        .font(.headline)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    if volume.isAnonymous {
+                        Text("anonymous")
+                            .font(.caption2)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Color.secondary.opacity(0.12), in: Capsule())
+                            .help("Created automatically for an image VOLUME directive")
+                    }
+                }
+                HStack(spacing: 16) {
+                    Label(volume.displayCapacity, systemImage: "internaldrive").font(.caption)
+                    Label(users.isEmpty ? "not mounted" : "\(users.count) container\(users.count == 1 ? "" : "s")", systemImage: "shippingbox")
+                        .font(.caption)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+
+            HStack(spacing: 12) {
+                ZStack {
+                    if isDeleting || containerManager.updatingVolumeIDs.contains(volume.name) {
+                        ProgressView().scaleEffect(0.7).frame(width: 16, height: 16)
+                    } else {
+                        Button(role: .destructive) {
+                            showingDeleteConfirmation = true
+                        } label: {
+                            Image(systemName: "trash").frame(width: 16, height: 16).padding(3)
+                        }
+                        .actionButtonStyle(circular: true)
+                        .controlSize(.small)
+                        .disabled(!users.isEmpty)
+                        .help(users.isEmpty ? "Delete volume" : "Mounted by \(users.map(\.name).joined(separator: ", "))")
+                    }
+                }
+            }
+            .frame(width: 60)
+        }
+        .padding(.vertical, 4)
+        .confirmationDialog("Delete Volume?", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                isDeleting = true
+                Task {
+                    await containerManager.deleteVolume(name: volume.name)
+                    isDeleting = false
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Delete volume \"\(volume.name)\"? All data stored in it is lost. This cannot be undone.")
+        }
+    }
+}
+
+// MARK: - Detail views
+
+struct NetworkDetailView: View {
+    let networkName: String
+    @EnvironmentObject var containerManager: ContainerizationWrapper
+    @EnvironmentObject var appNavigation: AppNavigation
+    @State private var showingDeleteConfirmation = false
+
+    private var network: ContainerNetwork? { containerManager.networks.first { $0.name == networkName } }
+    private var attached: [Container] { containerManager.containers(onNetwork: networkName) }
+
+    var body: some View {
+        ScrollView {
+            if let network {
+                VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text(network.name).font(.largeTitle).fontWeight(.bold)
+                            Spacer()
+                            if network.isBuiltin {
+                                StatusBadge(status: "builtin")
+                            }
+                        }
+                        Text("Network").font(.caption).foregroundColor(.secondary)
+                    }
+
+                    DetailSection(title: "Configuration", icon: "network") {
+                        DetailRow(label: "Mode", value: network.mode ?? "-")
+                        DetailRow(label: "Plugin", value: network.plugin ?? "-", isMonospaced: true)
+                        DetailRow(label: "Created", value: network.creationDate ?? "-")
+                        if !network.labels.isEmpty {
+                            DetailRow(label: "Labels", value: network.labels.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: "\n"), isMonospaced: true)
+                        }
+                    }
+
+                    DetailSection(title: "Addressing", icon: "globe") {
+                        DetailRow(label: "IPv4 Subnet", value: network.ipv4Subnet ?? "-", isMonospaced: true)
+                        DetailRow(label: "IPv4 Gateway", value: network.ipv4Gateway ?? "-", isMonospaced: true)
+                        DetailRow(label: "IPv6 Subnet", value: network.ipv6Subnet ?? "-", isMonospaced: true)
+                        if let domain = containerManager.systemDNSDomain {
+                            Text("Containers on this network resolve each other as <name> or <name>.\(domain).")
+                                .font(.caption2).foregroundColor(.secondary)
+                        } else {
+                            Text("No service DNS domain is configured: containers on this network reach each other by IP only. See the Service page for how to enable it.")
+                                .font(.caption2).foregroundColor(.orange)
+                        }
+                    }
+
+                    attachedContainersSection(attached, emptyText: "No containers are attached to this network.")
+
+                    if !network.isBuiltin {
+                        HStack {
+                            Button(role: .destructive) { showingDeleteConfirmation = true } label: {
+                                Label("Delete Network", systemImage: "trash")
+                            }
+                            .disabled(!attached.isEmpty || containerManager.updatingNetworkIDs.contains(network.name))
+                            if !attached.isEmpty {
+                                Text("Detach or delete the attached containers first.")
+                                    .font(.caption).foregroundColor(.secondary)
+                            }
+                            Spacer()
+                        }
+                    }
+                }
+                .padding()
+            } else {
+                Text("Network \"\(networkName)\" no longer exists.")
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 50)
+            }
+        }
+        .navigationTitle(networkName)
+        .confirmationDialog("Delete Network?", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                Task { await containerManager.deleteNetwork(name: networkName) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Delete network \"\(networkName)\"?")
+        }
+    }
+
+    private func attachedContainersSection(_ containers: [Container], emptyText: String) -> some View {
+        DetailSection(title: "Attached Containers", icon: "shippingbox") {
+            if containers.isEmpty {
+                Text(emptyText).font(.callout).foregroundColor(.secondary)
+            } else {
+                ForEach(containers) { container in
+                    Button {
+                        appNavigation.showContainer(id: container.id, tab: 0)
+                    } label: {
+                        HStack(spacing: 10) {
+                            StatusDot(isRunning: container.status == .running)
+                            Text(container.name).font(.callout.weight(.medium))
+                            if let ip = container.ipAddress {
+                                Text(ip).font(.caption.monospaced()).foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.caption).foregroundColor(.secondary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+    }
+}
+
+struct VolumeDetailView: View {
+    let volumeName: String
+    @EnvironmentObject var containerManager: ContainerizationWrapper
+    @EnvironmentObject var appNavigation: AppNavigation
+    @State private var showingDeleteConfirmation = false
+
+    private var volume: ContainerVolume? { containerManager.volumes.first { $0.name == volumeName } }
+    private var users: [Container] { containerManager.containers(usingVolume: volumeName) }
+
+    var body: some View {
+        ScrollView {
+            if let volume {
+                VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text(volume.name).font(.largeTitle).fontWeight(.bold)
+                                .lineLimit(1).truncationMode(.middle)
+                            Spacer()
+                            if volume.isAnonymous { StatusBadge(status: "anonymous") }
+                        }
+                        Text("Volume").font(.caption).foregroundColor(.secondary)
+                    }
+
+                    DetailSection(title: "Configuration", icon: "internaldrive") {
+                        DetailRow(label: "Capacity", value: volume.displayCapacity)
+                        DetailRow(label: "Driver", value: volume.driver ?? "-")
+                        DetailRow(label: "Filesystem", value: volume.format ?? "-")
+                        DetailRow(label: "Created", value: volume.creationDate ?? "-")
+                        if volume.isAnonymous {
+                            Text("Created automatically for an image VOLUME directive. Anonymous volumes are removed by Prune when no container references them.")
+                                .font(.caption2).foregroundColor(.secondary)
+                        }
+                        Text("Capacity is the provisioned size of the backing image, not the space currently used.")
+                            .font(.caption2).foregroundColor(.secondary)
+                    }
+
+                    DetailSection(title: "Backing File", icon: "doc") {
+                        HStack(spacing: 6) {
+                            Text(volume.source ?? "-")
+                                .font(InfoTextStyle.monospacedValueFont)
+                                .textSelection(.enabled)
+                                .lineLimit(2)
+                                .truncationMode(.middle)
+                            if let source = volume.source, FileManager.default.fileExists(atPath: source) {
+                                Button {
+                                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: source)])
+                                } label: { Image(systemName: "folder") }
+                                .buttonStyle(.borderless)
+                                .help("Reveal in Finder")
+                            }
+                        }
+                    }
+
+                    DetailSection(title: "Mounted By", icon: "shippingbox") {
+                        if users.isEmpty {
+                            Text("No container mounts this volume.").font(.callout).foregroundColor(.secondary)
+                        } else {
+                            ForEach(users) { container in
+                                Button {
+                                    appNavigation.showContainer(id: container.id, tab: 0)
+                                } label: {
+                                    HStack(spacing: 10) {
+                                        StatusDot(isRunning: container.status == .running)
+                                        Text(container.name).font(.callout.weight(.medium))
+                                        Spacer()
+                                        Image(systemName: "chevron.right").font(.caption).foregroundColor(.secondary)
+                                    }
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .padding(.vertical, 2)
+                            }
+                        }
+                    }
+
+                    HStack {
+                        Button(role: .destructive) { showingDeleteConfirmation = true } label: {
+                            Label("Delete Volume", systemImage: "trash")
+                        }
+                        .disabled(!users.isEmpty || containerManager.updatingVolumeIDs.contains(volume.name))
+                        if !users.isEmpty {
+                            Text("Delete the containers that mount it first.").font(.caption).foregroundColor(.secondary)
+                        }
+                        Spacer()
+                    }
+                }
+                .padding()
+            } else {
+                Text("Volume \"\(volumeName)\" no longer exists.")
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 50)
+            }
+        }
+        .navigationTitle(volume?.displayName ?? volumeName)
+        .confirmationDialog("Delete Volume?", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                Task { await containerManager.deleteVolume(name: volumeName) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Delete volume \"\(volumeName)\"? All data stored in it is lost. This cannot be undone.")
+        }
+    }
+}
+
+// MARK: - Create sheets
+
+struct CreateNetworkSheet: View {
+    @EnvironmentObject var containerManager: ContainerizationWrapper
+    let onCreated: (String) -> Void
+    let onClose: () -> Void
+    @State private var name = ""
+    @State private var isCreating = false
+    @State private var errorMessage: String?
+
+    private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var isNameValid: Bool {
+        let allowed = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.")
+        return !trimmedName.isEmpty && trimmedName.allSatisfy { allowed.contains($0) }
+    }
+    private var nameTaken: Bool { containerManager.networks.contains { $0.name == trimmedName } }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("New Network").font(.headline)
+            TextField("Name (e.g. app-net)", text: $name).textFieldStyle(.roundedBorder)
+            if !trimmedName.isEmpty && !isNameValid {
+                Text("Use letters, digits, '-', '_' or '.' only.").font(.caption).foregroundColor(.orange)
+            } else if nameTaken {
+                Text("A network named \"\(trimmedName)\" already exists.").font(.caption).foregroundColor(.orange)
+            }
+            if let errorMessage {
+                Text(errorMessage).font(.caption).foregroundColor(.red).textSelection(.enabled)
+            }
+            HStack {
+                Button("Create") { create() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!isNameValid || nameTaken || isCreating)
+                if isCreating { ProgressView().scaleEffect(0.8) }
+                Spacer()
+                Button("Close") { onClose() }
+            }
+            Text("Creates a NAT network with its own subnet (`container network create`). Attach containers to it with the Network option when creating them.")
+                .font(.caption2).foregroundColor(.secondary)
+        }
+        .padding()
+        .frame(minWidth: 460, minHeight: 200)
+    }
+
+    private func create() {
+        isCreating = true
+        errorMessage = nil
+        Task {
+            let ok = await containerManager.createNetwork(name: trimmedName)
+            isCreating = false
+            if ok {
+                onCreated(trimmedName)
+            } else {
+                errorMessage = containerManager.lastErrorMessage
+                containerManager.lastErrorMessage = nil
+            }
+        }
+    }
+}
+
+struct CreateVolumeSheet: View {
+    @EnvironmentObject var containerManager: ContainerizationWrapper
+    let onCreated: (String) -> Void
+    let onClose: () -> Void
+    @State private var name = ""
+    @State private var size = ""
+    @State private var isCreating = false
+    @State private var errorMessage: String?
+
+    private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var isNameValid: Bool {
+        let allowed = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.")
+        return !trimmedName.isEmpty && trimmedName.allSatisfy { allowed.contains($0) }
+    }
+    private var nameTaken: Bool { containerManager.volumes.contains { $0.name == trimmedName } }
+    /// `-s` accepts a number with an optional K/M/G/T/P suffix.
+    private var isSizeValid: Bool {
+        let trimmed = size.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return true }
+        return trimmed.range(of: #"^\d+(\.\d+)?\s*[KMGTPkmgtp]?[iI]?[bB]?$"#, options: .regularExpression) != nil
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("New Volume").font(.headline)
+            TextField("Name (e.g. pgdata)", text: $name).textFieldStyle(.roundedBorder)
+            if !trimmedName.isEmpty && !isNameValid {
+                Text("Use letters, digits, '-', '_' or '.' only.").font(.caption).foregroundColor(.orange)
+            } else if nameTaken {
+                Text("A volume named \"\(trimmedName)\" already exists.").font(.caption).foregroundColor(.orange)
+            }
+            TextField("Capacity (optional, e.g. 10G — CLI default when empty)", text: $size).textFieldStyle(.roundedBorder)
+            if !isSizeValid {
+                Text("Enter a size like 512M, 10G or 1T.").font(.caption).foregroundColor(.orange)
+            }
+            if let errorMessage {
+                Text(errorMessage).font(.caption).foregroundColor(.red).textSelection(.enabled)
+            }
+            HStack {
+                Button("Create") { create() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!isNameValid || nameTaken || !isSizeValid || isCreating)
+                if isCreating { ProgressView().scaleEffect(0.8) }
+                Spacer()
+                Button("Close") { onClose() }
+            }
+            Text("Creates a named volume (`container volume create`) backed by a sparse ext4 image; capacity is the maximum it can grow to. Mount it in a container as `<name>:/path`.")
+                .font(.caption2).foregroundColor(.secondary)
+        }
+        .padding()
+        .frame(minWidth: 460, minHeight: 240)
+    }
+
+    private func create() {
+        isCreating = true
+        errorMessage = nil
+        Task {
+            let ok = await containerManager.createVolume(name: trimmedName, size: size.isEmpty ? nil : size)
+            isCreating = false
+            if ok {
+                onCreated(trimmedName)
+            } else {
+                errorMessage = containerManager.lastErrorMessage
+                containerManager.lastErrorMessage = nil
+            }
+        }
+    }
+}

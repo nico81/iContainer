@@ -16,6 +16,8 @@ enum SidebarSelection: Hashable {
     case service
     case container(ContainerNavigationTarget)
     case machine(MachineNavigationTarget)
+    case network(String)
+    case volume(String)
 }
 
 private enum CreateImageSource: String, CaseIterable, Identifiable {
@@ -48,6 +50,8 @@ private enum SidebarManagedSection: String, CaseIterable, Identifiable {
     case containers
     case machines
     case images
+    case networks
+    case volumes
 
     var id: String { rawValue }
 }
@@ -91,6 +95,13 @@ struct ContentView: View {
     @AppStorage(SettingsManager.Keys.containersExpanded) private var isContainersExpanded = true
     @AppStorage(SettingsManager.Keys.imagesExpanded) private var isImagesExpanded = true
     @AppStorage(SettingsManager.Keys.machinesExpanded) private var isMachinesExpanded = true
+    @AppStorage(SettingsManager.Keys.networksExpanded) private var isNetworksExpanded = true
+    @AppStorage(SettingsManager.Keys.volumesExpanded) private var isVolumesExpanded = true
+    @State private var showingCreateNetworkSheet = false
+    @State private var showingCreateVolumeSheet = false
+    @State private var showingPruneNetworksConfirmation = false
+    @State private var showingPruneVolumesConfirmation = false
+    @State private var pruneResultMessage: String?
     @State private var showingCreateMachineSheet = false
     @State private var showingEditMachineSheet = false
     @State private var editingMachineId: String?
@@ -278,6 +289,41 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingDockerImportSheet) {
             DockerImportSheet(onClose: { showingDockerImportSheet = false })
+        }
+        .sheet(isPresented: $showingCreateNetworkSheet) {
+            CreateNetworkSheet(
+                onCreated: { name in
+                    showingCreateNetworkSheet = false
+                    selection = .network(name)
+                },
+                onClose: { showingCreateNetworkSheet = false }
+            )
+        }
+        .sheet(isPresented: $showingCreateVolumeSheet) {
+            CreateVolumeSheet(
+                onCreated: { name in
+                    showingCreateVolumeSheet = false
+                    selection = .volume(name)
+                },
+                onClose: { showingCreateVolumeSheet = false }
+            )
+        }
+        .confirmationDialog("Prune unused networks?", isPresented: $showingPruneNetworksConfirmation, titleVisibility: .visible) {
+            Button("Prune", role: .destructive) { runPrune(networks: true) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Removes every network with no attached containers (`container network prune`).")
+        }
+        .confirmationDialog("Prune unused volumes?", isPresented: $showingPruneVolumesConfirmation, titleVisibility: .visible) {
+            Button("Prune", role: .destructive) { runPrune(networks: false) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Removes every volume no container references — including anonymous ones. Their data is lost. This cannot be undone.")
+        }
+        .alert("Prune finished", isPresented: Binding(get: { pruneResultMessage != nil }, set: { if !$0 { pruneResultMessage = nil } })) {
+            Button("OK", role: .cancel) { pruneResultMessage = nil }
+        } message: {
+            Text(pruneResultMessage ?? "")
         }
         .alert("Cannot Open Compose File", isPresented: $showingComposeOpenError) {
             Button("OK", role: .cancel) { }
@@ -707,6 +753,108 @@ struct ContentView: View {
         }
     }
 
+    private var filteredNetworks: [ContainerNetwork] {
+        let query = sidebarSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return containerManager.networks }
+        return containerManager.networks.filter {
+            $0.name.localizedCaseInsensitiveContains(query) || ($0.ipv4Subnet?.localizedCaseInsensitiveContains(query) ?? false)
+        }
+    }
+
+    private var filteredVolumes: [ContainerVolume] {
+        let query = sidebarSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return containerManager.volumes }
+        return containerManager.volumes.filter { $0.name.localizedCaseInsensitiveContains(query) }
+    }
+
+    private var networksSection: some View {
+        Section {
+            DisclosureGroup(isExpanded: $isNetworksExpanded) {
+                if serviceManager.isServiceRunning {
+                    ForEach(filteredNetworks) { network in
+                        NavigationLink(value: SidebarSelection.network(network.name)) {
+                            NetworkRowView(network: network)
+                        }
+                    }
+                    if filteredNetworks.isEmpty && !sidebarSearchQuery.isEmpty {
+                        Text("No matching networks").font(.caption).foregroundStyle(.secondary)
+                    }
+                } else {
+                    EmptyView()
+                }
+            } label: {
+                HStack {
+                    Text("Networks")
+                    Spacer()
+                }
+                .contextMenu {
+                    sectionReorderMenu(.networks)
+                    if serviceManager.isServiceRunning {
+                        Divider()
+                        Button("Prune Unused Networks…") { requestPrune(networks: true) }
+                    }
+                }
+            }
+        }
+    }
+
+    private var volumesSection: some View {
+        Section {
+            DisclosureGroup(isExpanded: $isVolumesExpanded) {
+                if serviceManager.isServiceRunning {
+                    ForEach(filteredVolumes) { volume in
+                        NavigationLink(value: SidebarSelection.volume(volume.name)) {
+                            VolumeRowView(volume: volume)
+                        }
+                    }
+                    if filteredVolumes.isEmpty && !sidebarSearchQuery.isEmpty {
+                        Text("No matching volumes").font(.caption).foregroundStyle(.secondary)
+                    }
+                } else {
+                    EmptyView()
+                }
+            } label: {
+                HStack {
+                    Text("Volumes")
+                    Spacer()
+                }
+                .contextMenu {
+                    sectionReorderMenu(.volumes)
+                    if serviceManager.isServiceRunning {
+                        Divider()
+                        Button("Prune Unused Volumes…") { requestPrune(networks: false) }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Honors the "confirm prune" preference: skip the dialog when the user
+    /// turned it off.
+    private func requestPrune(networks: Bool) {
+        if SettingsManager.shared.confirmPrune {
+            if networks { showingPruneNetworksConfirmation = true } else { showingPruneVolumesConfirmation = true }
+        } else {
+            runPrune(networks: networks)
+        }
+    }
+
+    private func runPrune(networks: Bool) {
+        Task {
+            let output = networks ? await containerManager.pruneNetworks() : await containerManager.pruneVolumes()
+            if let output {
+                let removed = output.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+                let kind = networks ? "network" : "volume"
+                pruneResultMessage = removed.isEmpty
+                    ? "No unused \(kind)s to remove."
+                    : "Removed \(removed.count) \(kind)\(removed.count == 1 ? "" : "s"): \(removed.joined(separator: ", "))"
+            } else if let error = containerManager.lastErrorMessage {
+                pruneResultMessage = "Prune failed: \(error)"
+                containerManager.lastErrorMessage = nil
+            }
+        }
+    }
+
     private var sidebar: some View {
         List(selection: $selection) {
             Section(header: Text("Container service")) {
@@ -724,6 +872,8 @@ struct ContentView: View {
                 case .containers: containersSection
                 case .machines: machinesSection
                 case .images: imagesSection
+                case .networks: networksSection
+                case .volumes: volumesSection
                 }
             }
         }
@@ -794,6 +944,12 @@ struct ContentView: View {
         case .machine(let target):
             MachineDetailView(machineId: target.id, initialTab: target.tab)
                 .id(target)
+        case .network(let name):
+            NetworkDetailView(networkName: name)
+                .id(name)
+        case .volume(let name):
+            VolumeDetailView(volumeName: name)
+                .id(name)
         default:
             welcomeDashboard
         }
@@ -860,6 +1016,16 @@ struct ContentView: View {
                         showingCreateMachineSheet = true
                     } label: {
                         Label("New Machine…", systemImage: "cpu")
+                    }
+                    Button {
+                        showingCreateNetworkSheet = true
+                    } label: {
+                        Label("New Network…", systemImage: "network")
+                    }
+                    Button {
+                        showingCreateVolumeSheet = true
+                    } label: {
+                        Label("New Volume…", systemImage: "internaldrive")
                     }
                     Divider()
                     Button {

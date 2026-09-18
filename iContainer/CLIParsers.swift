@@ -465,7 +465,7 @@ nonisolated enum CLIParsers {
         }
     }
 
-    private static func stringValue(_ dict: [String: Any], keys: [String]) -> String? {
+    static func stringValue(_ dict: [String: Any], keys: [String]) -> String? {
         for key in keys {
             if let value = dict[key] as? String, !value.isEmpty {
                 return value
@@ -477,7 +477,7 @@ nonisolated enum CLIParsers {
         return nil
     }
 
-    private static func intValue(_ dict: [String: Any], keys: [String]) -> Int64? {
+    static func intValue(_ dict: [String: Any], keys: [String]) -> Int64? {
         for key in keys {
             if let value = dict[key] as? NSNumber {
                 return value.int64Value
@@ -489,7 +489,7 @@ nonisolated enum CLIParsers {
         return nil
     }
 
-    private static func intValueInt(_ dict: [String: Any], keys: [String]) -> Int? {
+    static func intValueInt(_ dict: [String: Any], keys: [String]) -> Int? {
         for key in keys {
             if let value = dict[key] as? Int {
                 return value
@@ -513,7 +513,7 @@ nonisolated enum CLIParsers {
         return []
     }
 
-    private static func boolValue(_ dict: [String: Any], keys: [String]) -> Bool? {
+    static func boolValue(_ dict: [String: Any], keys: [String]) -> Bool? {
         for key in keys {
             if let value = dict[key] as? Bool {
                 return value
