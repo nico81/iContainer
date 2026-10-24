@@ -16,6 +16,7 @@ struct ContainerCLIUpdateSheet: View {
     @State private var plan: ContainerCLIUpdater.Plan?
     @State private var planError: String?
     @State private var restartContainers = true
+    @State private var showingHighlights = true
 
     private var runningContainers: [Container] { containerManager.containers.filter { $0.status == .running } }
 
@@ -25,6 +26,20 @@ struct ContainerCLIUpdateSheet: View {
 
             if let plan {
                 planSummary(plan)
+                if let notes = releaseChecker.latestReleaseNotes, releaseChecker.latestVersion == plan.version {
+                    DisclosureGroup(isExpanded: $showingHighlights) {
+                        CLIReleaseHighlightsView(notes: notes, maxItems: 8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 4)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text("What's new in v\(plan.version)").font(.caption.weight(.semibold))
+                            if !notes.breakingItems.isEmpty {
+                                Text("\(notes.breakingItems.count) breaking").font(.caption2.weight(.semibold)).foregroundColor(.orange)
+                            }
+                        }
+                    }
+                }
             } else if let planError {
                 Label(planError, systemImage: "xmark.circle.fill").font(.caption).foregroundColor(.red).textSelection(.enabled)
             } else {

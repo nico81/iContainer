@@ -21,6 +21,7 @@ struct WelcomeDashboardView: View {
     @EnvironmentObject private var updater: UpdaterViewModel
     @EnvironmentObject private var appReleaseChecker: AppReleaseChecker
     @State private var showingAppReleaseNotes: Bool = false
+    @State private var showingCLIReleaseNotes: Bool = false
 
     private var runningContainers: [Container] {
         containers.filter { $0.status == .running }
@@ -69,6 +70,16 @@ struct WelcomeDashboardView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
+        .sheet(isPresented: $showingCLIReleaseNotes) {
+            CLIReleaseNotesSheet(
+                version: releaseChecker.latestVersion ?? "?",
+                installedVersion: releaseChecker.installedVersion,
+                notes: releaseChecker.latestReleaseNotes,
+                releaseURL: releaseChecker.latestReleaseURL,
+                onUpdate: releaseChecker.isUpdateAvailable ? { appNavigation.requestCLIUpdate(autoStart: true) } : nil,
+                onClose: { showingCLIReleaseNotes = false }
+            )
+        }
         .sheet(isPresented: $showingAppReleaseNotes) {
             ReleaseNotesSheet(
                 title: appReleaseChecker.latestReleaseName ?? "What's new in iContainer",
@@ -154,8 +165,8 @@ struct WelcomeDashboardView: View {
             Image(systemName: "arrow.down.circle.fill")
                 .font(.title2)
                 .foregroundColor(.accentColor)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("A new version of the Apple container service is available")
+            VStack(alignment: .leading, spacing: 6) {
+                Text("A new version of the Apple container CLI is available")
                     .font(.subheadline.weight(.semibold))
                 if let latest = releaseChecker.latestVersion {
                     let installed = releaseChecker.installedVersion ?? "?"
@@ -163,14 +174,17 @@ struct WelcomeDashboardView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
+                // What changes, before the user clicks Update Now.
+                if let notes = releaseChecker.latestReleaseNotes {
+                    CLIReleaseHighlightsView(notes: notes, maxItems: 4)
+                        .padding(.vertical, 2)
+                }
                 HStack(spacing: 12) {
                     Button("Update Now") { appNavigation.requestCLIUpdate(autoStart: true) }
                         .controlSize(.small)
-                    Link(
-                        "Download latest release",
-                        destination: releaseChecker.latestReleaseURL ?? ContainerReleaseChecker.releasesPageURL
-                    )
-                    .font(.caption)
+                    Button("Release Notes") { showingCLIReleaseNotes = true }
+                        .buttonStyle(.link)
+                        .font(.caption)
                 }
             }
             Spacer(minLength: 0)

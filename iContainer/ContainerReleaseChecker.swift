@@ -13,6 +13,8 @@ final class ContainerReleaseChecker: ObservableObject {
     @Published private(set) var latestVersion: String?
     @Published private(set) var latestReleaseURL: URL?
     @Published private(set) var installedVersion: String?
+    /// Parsed notes of `latestVersion` (GitHub release body).
+    @Published private(set) var latestReleaseNotes: CLIReleaseNotes?
     @Published private(set) var isChecking: Bool = false
     /// True when an update has been detected and the popup has not yet been
     /// dismissed in this app session. Setting this back to `false` (e.g. when
@@ -81,6 +83,10 @@ final class ContainerReleaseChecker: ObservableObject {
                 latestReleaseURL = url
             } else {
                 latestReleaseURL = Self.releasesPageURL
+            }
+            if let body = json["body"] as? String, !body.isEmpty {
+                let parsed = CLIParsers.parseReleaseNotes(body)
+                latestReleaseNotes = parsed.isEmpty ? nil : parsed
             }
             lastFetchedAt = Date()
             refreshUpdateAlertState()

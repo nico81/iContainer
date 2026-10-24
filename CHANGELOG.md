@@ -7,6 +7,17 @@ The format follows Keep a Changelog, and versions use semantic versioning:
 
 ## [Unreleased]
 
+### Added
+- **See what's new before updating the Apple container CLI.** The
+  "newer version available" banner on the dashboard now lists the release
+  highlights from Apple's GitHub release notes, grouped by area, with
+  breaking CLI/API changes (⌨️ / 👩‍💻 in Apple's notes) flagged in orange so
+  they can't be missed. *Release Notes* opens the full changelog (highlights
+  plus "What's Changed", each linking to its pull request) with *Update Now*
+  right there; the same notes are reachable from the Service page and the
+  update alert, and the update sheet shows "What's new in vX" above the
+  install plan. Update Now on the banner stays one click.
+
 ### Fixed
 - "A new version of iContainer is available" now has an **Install Update…**
   button (dashboard card and alert) that hands off to Sparkle's installer.

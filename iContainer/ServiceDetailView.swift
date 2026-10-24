@@ -8,6 +8,7 @@ struct ServiceDetailView: View {
     @EnvironmentObject var releaseChecker: ContainerReleaseChecker
     @EnvironmentObject var appNavigation: AppNavigation
     @State private var selectedTab = 0
+    @State private var showingCLIReleaseNotes = false
     @State private var isRemovingRegistryCredentials = false
     @State private var showingRemoveRegistryCredentialsConfirmation = false
     @State private var serviceStatsRefreshTask: Task<Void, Never>?
@@ -40,6 +41,16 @@ struct ServiceDetailView: View {
                 AccentTabPicker(selection: $selectedTab, labels: ["Info", "Stats", "Logs"])
                     .frame(width: 240)
             }
+        }
+        .sheet(isPresented: $showingCLIReleaseNotes) {
+            CLIReleaseNotesSheet(
+                version: releaseChecker.latestVersion ?? "?",
+                installedVersion: releaseChecker.installedVersion,
+                notes: releaseChecker.latestReleaseNotes,
+                releaseURL: releaseChecker.latestReleaseURL,
+                onUpdate: releaseChecker.isUpdateAvailable ? { appNavigation.requestCLIUpdate(autoStart: true) } : nil,
+                onClose: { showingCLIReleaseNotes = false }
+            )
         }
         .task {
             await serviceManager.checkServiceStatus()
@@ -101,11 +112,9 @@ struct ServiceDetailView: View {
                                     .font(.caption)
                                 Button("Update Now") { appNavigation.requestCLIUpdate(autoStart: true) }
                                     .controlSize(.small)
-                                Link(
-                                    "Download",
-                                    destination: releaseChecker.latestReleaseURL ?? ContainerReleaseChecker.releasesPageURL
-                                )
-                                .font(.caption)
+                                Button("Release Notes") { showingCLIReleaseNotes = true }
+                                    .buttonStyle(.link)
+                                    .font(.caption)
                                 Spacer()
                             }
                             .padding(.top, 4)

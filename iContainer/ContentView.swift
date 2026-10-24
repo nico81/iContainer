@@ -67,6 +67,7 @@ struct ContentView: View {
     @Environment(\.openWindow) private var openWindow
     @State private var showingDockerImportSheet = false
     @State private var showingCLIUpdateSheet = false
+    @State private var showingCLIReleaseNotes = false
     @State private var cliUpdateAutoStart = false
     @State private var createDockerContainerID: String?
     @State private var createDockerTranslation: DockerTranslation?
@@ -221,9 +222,8 @@ struct ContentView: View {
             isPresented: $releaseChecker.shouldPresentUpdateAlert
         ) {
             Button("Update Now") { cliUpdateAutoStart = true; showingCLIUpdateSheet = true }
-            Button("Download") {
-                let url = releaseChecker.latestReleaseURL ?? ContainerReleaseChecker.releasesPageURL
-                NSWorkspace.shared.open(url)
+            Button("Release Notes") {
+                DispatchQueue.main.async { showingCLIReleaseNotes = true }
             }
             Button("Later", role: .cancel) { }
         } message: {
@@ -298,6 +298,18 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingDockerImportSheet) {
             DockerImportSheet(onClose: { showingDockerImportSheet = false })
+        }
+        .sheet(isPresented: $showingCLIReleaseNotes) {
+            CLIReleaseNotesSheet(
+                version: releaseChecker.latestVersion ?? "?",
+                installedVersion: releaseChecker.installedVersion,
+                notes: releaseChecker.latestReleaseNotes,
+                releaseURL: releaseChecker.latestReleaseURL,
+                onUpdate: releaseChecker.isUpdateAvailable ? {
+                    DispatchQueue.main.async { cliUpdateAutoStart = true; showingCLIUpdateSheet = true }
+                } : nil,
+                onClose: { showingCLIReleaseNotes = false }
+            )
         }
         .sheet(isPresented: $showingCLIUpdateSheet) {
             ContainerCLIUpdateSheet(autoStart: cliUpdateAutoStart, onClose: { showingCLIUpdateSheet = false })
