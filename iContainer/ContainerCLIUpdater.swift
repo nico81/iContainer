@@ -3,7 +3,7 @@ import AppKit
 import Combine
 import Logging
 
-/// Updates Apple's `container` CLI in place.
+/// Installs or updates Apple's `container` CLI in place.
 ///
 /// Mirrors what Apple's own `/usr/local/bin/update-container.sh` does —
 /// download the signed installer package from the GitHub release, stop the
@@ -15,7 +15,9 @@ import Logging
 /// administrator privileges`): the app never sees the password.
 ///
 /// Homebrew installs (`/opt/homebrew/bin/container`) are upgraded with
-/// `brew upgrade container` instead, which needs no privileges.
+/// `brew upgrade container` instead, which needs no privileges. When no CLI
+/// is found at all the same package flow is a fresh install: nothing to stop
+/// beforehand, and the first service start installs the default kernel.
 @MainActor
 final class ContainerCLIUpdater: ObservableObject {
     enum InstallMethod: Equatable {
@@ -128,6 +130,8 @@ final class ContainerCLIUpdater: ObservableObject {
         let assetURL: URL
         let assetSize: Int64
         let method: InstallMethod
+        /// No CLI on this Mac yet: install rather than update.
+        let isFreshInstall: Bool
     }
 
     /// Fetches the latest release and prepares the plan without side effects.
@@ -141,11 +145,12 @@ final class ContainerCLIUpdater: ObservableObject {
               let tag = json["tag_name"] as? String else {
             throw NSError(domain: "iContainer.cliUpdater", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not read the latest release from GitHub."])
         }
-        let method = Self.detectInstallMethod(cliPath: SettingsManager.resolvedContainerCLIPath())
+        let cliPath = SettingsManager.resolvedContainerCLIPath()
+        let method: InstallMethod = cliPath == nil ? .package : Self.detectInstallMethod(cliPath: cliPath)
         guard let asset = Self.signedPackageAsset(in: json) else {
             throw NSError(domain: "iContainer.cliUpdater", code: 2, userInfo: [NSLocalizedDescriptionKey: "Release \(tag) has no signed installer package."])
         }
-        return Plan(version: tag.trimmingCharacters(in: CharacterSet(charactersIn: "vV")), assetName: asset.name, assetURL: asset.url, assetSize: asset.size, method: method)
+        return Plan(version: tag.trimmingCharacters(in: CharacterSet(charactersIn: "vV")), assetName: asset.name, assetURL: asset.url, assetSize: asset.size, method: method, isFreshInstall: cliPath == nil)
     }
 
     /// Runs the whole update. `serviceManager` stops/starts the service;
@@ -154,7 +159,7 @@ final class ContainerCLIUpdater: ObservableObject {
     func run(plan: Plan, serviceManager: ServiceManager, containerManager: ContainerizationWrapper, restartContainers: Bool) async {
         guard !phase.isActive else { return }
         log = []
-        let previouslyRunning = containerManager.containers.filter { $0.status == .running }.map(\.id)
+        let previouslyRunning = plan.isFreshInstall ? [] : containerManager.containers.filter { $0.status == .running }.map(\.id)
         do {
             switch plan.method {
             case .homebrew(let brewPath):
@@ -172,18 +177,25 @@ final class ContainerCLIUpdater: ObservableObject {
                 let pkgURL = try await download(plan)
                 defer { try? FileManager.default.removeItem(at: pkgURL.deletingLastPathComponent()) }
                 try await verify(pkgURL)
-                phase = .stoppingService
-                append("Stopping the container service…")
-                await serviceManager.stopService()
+                if !plan.isFreshInstall {
+                    phase = .stoppingService
+                    append("Stopping the container service…")
+                    await serviceManager.stopService()
+                }
                 phase = .installing
                 append("Installing \(plan.assetName) — macOS will ask for your administrator password.")
                 try await installWithAdminPrivileges(pkgURL)
             }
 
             phase = .startingService
-            append("Starting the container service…")
-            await serviceManager.startService()
-            await serviceManager.checkServiceStatus()
+            append(plan.isFreshInstall
+                   ? "Starting the container service — the first start downloads Apple's default Linux kernel…"
+                   : "Starting the container service…")
+            try await startService(serviceManager)
+            if plan.isFreshInstall {
+                // Swaps the setup screen for the main window.
+                containerManager.checkDependencies()
+            }
 
             if restartContainers, !previouslyRunning.isEmpty {
                 phase = .restartingContainers
@@ -322,6 +334,24 @@ final class ContainerCLIUpdater: ObservableObject {
         let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty { append(trimmed) }
         append("Package installed.")
+    }
+
+    /// `container system start --enable-kernel-install`: without the flag a
+    /// first start (no kernel configured yet) asks on stdin, which an app
+    /// can't answer. A no-op flag when the kernel is already there.
+    private func startService(_ serviceManager: ServiceManager) async throws {
+        guard let cliPath = SettingsManager.resolvedContainerCLIPath() else {
+            throw NSError(domain: "iContainer.cliUpdater", code: 12, userInfo: [NSLocalizedDescriptionKey: "The container CLI isn't where the package installs it (/usr/local/bin)."])
+        }
+        let result = try await Task.detached(priority: .userInitiated) {
+            try CLIProcess.run(executable: cliPath, arguments: ["system", "start", "--enable-kernel-install"])
+        }.value
+        await serviceManager.checkServiceStatus()
+        guard result.status == 0 else {
+            let tail = result.output.split(whereSeparator: { $0.isNewline }).suffix(3).joined(separator: "\n")
+            if !tail.isEmpty { append(tail) }
+            throw NSError(domain: "iContainer.cliUpdater", code: 11, userInfo: [NSLocalizedDescriptionKey: "The container service didn't start (exit \(result.status))."])
+        }
     }
 
     private func append(_ line: String) {

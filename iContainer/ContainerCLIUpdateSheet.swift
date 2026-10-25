@@ -2,7 +2,7 @@ import SwiftUI
 
 /// "Update container CLI" sheet: shows the plan (version, package, install
 /// method, what gets stopped), then drives `ContainerCLIUpdater` with live
-/// progress and a log.
+/// progress and a log. With no CLI on the Mac it becomes the installer.
 struct ContainerCLIUpdateSheet: View {
     @EnvironmentObject var updater: ContainerCLIUpdater
     @EnvironmentObject var serviceManager: ServiceManager
@@ -17,23 +17,27 @@ struct ContainerCLIUpdateSheet: View {
     @State private var planError: String?
     @State private var restartContainers = true
     @State private var showingHighlights = true
+    /// Decided once when the sheet opens; the CLI appears mid-run.
+    @State private var isFreshInstall = SettingsManager.resolvedContainerCLIPath() == nil
 
     private var runningContainers: [Container] { containerManager.containers.filter { $0.status == .running } }
 
+    private var title: String { isFreshInstall ? "Install Apple container CLI" : "Update Apple container CLI" }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Update Apple container CLI").font(.headline)
+        VStack(alignment: .leading, spacing: 16) {
+            CLISheetHeader(title: title)
 
             if let plan {
                 planSummary(plan)
-                if let notes = releaseChecker.latestReleaseNotes, releaseChecker.latestVersion == plan.version {
+                if !isFreshInstall, let notes = releaseChecker.latestReleaseNotes, releaseChecker.latestVersion == plan.version {
                     DisclosureGroup(isExpanded: $showingHighlights) {
                         CLIReleaseHighlightsView(notes: notes, maxItems: 8)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.top, 4)
                     } label: {
                         HStack(spacing: 6) {
-                            Text("What's new in v\(plan.version)").font(.caption.weight(.semibold))
+                            Text("What's new in v\(plan.version)").font(.callout.weight(.semibold))
                             if !notes.breakingItems.isEmpty {
                                 Text("\(notes.breakingItems.count) breaking").font(.caption2.weight(.semibold)).foregroundColor(.orange)
                             }
@@ -41,9 +45,10 @@ struct ContainerCLIUpdateSheet: View {
                     }
                 }
             } else if let planError {
-                Label(planError, systemImage: "xmark.circle.fill").font(.caption).foregroundColor(.red).textSelection(.enabled)
+                Label(planError, systemImage: "xmark.circle.fill").font(.callout).foregroundColor(.red).textSelection(.enabled)
             } else {
-                HStack(spacing: 8) { ProgressView().scaleEffect(0.7); Text("Checking the latest release…").font(.caption).foregroundColor(.secondary) }
+                HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Checking the latest release…").font(.callout).foregroundColor(.secondary) }
+                    .frame(maxWidth: .infinity, minHeight: 80)
             }
 
             progressView
@@ -62,76 +67,117 @@ struct ContainerCLIUpdateSheet: View {
                     // Grows with the log, caps at ~8 lines.
                     .frame(height: min(CGFloat(updater.log.count) * 17 + 18, 160))
                     .background(Color(NSColor.textBackgroundColor).opacity(0.5), in: RoundedRectangle(cornerRadius: AppRadius.small))
+                    .overlay(RoundedRectangle(cornerRadius: AppRadius.small).stroke(Color.hairline))
                     .onChange(of: updater.log.count) { _, _ in proxy.scrollTo("END", anchor: .bottom) }
                 }
             }
 
-            HStack {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "lock.shield")
+                Text(isFreshInstall
+                     ? "Signed Apple package from the official release, verified before install. The password prompt is macOS's own; iContainer never sees it."
+                     : "Signed Apple package from the official release, verified before install. The password prompt is macOS's own; iContainer never sees it. Same steps as Apple's update-container.sh.")
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .font(.caption)
+            .foregroundColor(.secondary)
+
+            Divider()
+
+            HStack(spacing: 10) {
                 switch updater.phase {
-                case .idle, .failed:
-                    Button(updater.phase == .idle ? "Update Now" : "Try Again") { start() }
-                        .keyboardShortcut(.defaultAction)
-                        .disabled(plan == nil)
                 case .downloading:
-                    ProgressView().scaleEffect(0.8)
-                    Button("Cancel") { updater.cancelDownload() }
-                case .done:
+                    Button("Cancel Download") { updater.cancelDownload() }
+                case .idle, .failed, .done:
                     EmptyView()
                 default:
-                    ProgressView().scaleEffect(0.8)
-                    Text("Please wait — the service is being updated.").font(.caption).foregroundColor(.secondary)
+                    Text(isFreshInstall ? "Please wait — the CLI is being installed." : "Please wait — the service is being updated.")
+                        .font(.caption).foregroundColor(.secondary)
                 }
                 Spacer()
-                Button(updater.phase.isActive ? "Working…" : "Close") { updater.reset(); onClose() }
+                Button(updater.phase.isActive ? "Working…" : (isDone ? "Done" : "Close")) { updater.reset(); onClose() }
                     .disabled(updater.phase.isActive)
+                    .keyboardShortcut(isDone ? .defaultAction : .cancelAction)
+                switch updater.phase {
+                case .idle, .failed:
+                    Button(updater.phase == .idle ? (isFreshInstall ? "Install" : "Update Now") : "Try Again") { start() }
+                        .buttonStyle(.borderedProminent)
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(plan == nil)
+                default:
+                    EmptyView()
+                }
             }
-
-            Text("Signed Apple package from the official release, verified before install. The password prompt is macOS's own; iContainer never sees it. Same steps as Apple's update-container.sh.")
-                .font(.caption2).foregroundColor(.secondary)
+            .controlSize(.large)
         }
-        .padding()
-        .frame(width: 600)
+        .padding(24)
+        .frame(width: 560)
         .fixedSize(horizontal: false, vertical: true)
         .task {
             guard plan == nil else { return }
             do {
                 plan = try await updater.preparePlan()
-                if autoStart, updater.phase == .idle, runningContainers.isEmpty { start() }
+                // A fresh install has nothing running to confirm about (the
+                // container list may still hold entries from before the CLI
+                // was removed).
+                if autoStart, updater.phase == .idle, isFreshInstall || runningContainers.isEmpty { start() }
             } catch { planError = error.localizedDescription }
         }
     }
 
+    private var isDone: Bool {
+        if case .done = updater.phase { return true }
+        return false
+    }
+
     private func planSummary(_ plan: ContainerCLIUpdater.Plan) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Text(releaseChecker.installedVersion.map { "v\($0)" } ?? "installed ?").font(.title3.monospacedDigit())
-                Image(systemName: "arrow.right").foregroundColor(.secondary)
-                Text("v\(plan.version)").font(.title3.monospacedDigit().weight(.semibold))
-                Spacer()
-                Text(plan.method.label).font(.caption).foregroundColor(.secondary)
+        VStack(alignment: .leading, spacing: 12) {
+            CLIVersionTransition(
+                fromLabel: "Installed",
+                fromValue: isFreshInstall ? "None" : releaseChecker.installedVersion.map { "v\($0)" } ?? "?",
+                toLabel: isFreshInstall ? "Will install" : "Latest",
+                toValue: "v\(plan.version)"
+            )
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                if case .package = plan.method {
+                    infoRow("doc.zipper", "\(plan.assetName)", monospaced: true)
+                    infoRow("arrow.down.circle", ByteCountFormatter.string(fromByteCount: plan.assetSize, countStyle: .file) + " download")
+                }
+                infoRow("wrench.and.screwdriver", plan.method.label)
+                if isFreshInstall {
+                    infoRow("play.circle", "Installs under /usr/local and starts the container service; the first start also downloads Apple's default Linux kernel.")
+                } else if runningContainers.isEmpty {
+                    infoRow("arrow.clockwise", "No containers are running; the service is stopped and started again.")
+                }
             }
-            if case .package = plan.method {
-                Text("\(plan.assetName) · \(ByteCountFormatter.string(fromByteCount: plan.assetSize, countStyle: .file))")
-                    .font(.caption.monospaced()).foregroundColor(.secondary)
-            }
+
             if case .unknown = plan.method {
                 Label("Couldn't tell how the CLI was installed; the installer package will be used (it installs under /usr/local).", systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption).foregroundColor(.orange)
+                    .font(.callout).foregroundColor(.orange)
             }
-            if runningContainers.isEmpty {
-                Text("No containers are running; the service is stopped and started again.").font(.caption).foregroundColor(.secondary)
-            } else {
-                VStack(alignment: .leading, spacing: 4) {
+            if !isFreshInstall, !runningContainers.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
                     Label("Stopping the service stops \(runningContainers.count) running container\(runningContainers.count == 1 ? "" : "s"): \(runningContainers.map(\.name).joined(separator: ", ")). Press Update Now to confirm.", systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption).foregroundColor(.orange)
-                    Toggle("Start them again after the update", isOn: $restartContainers).toggleStyle(.checkbox).font(.caption)
+                        .font(.callout).foregroundColor(.orange)
+                    Toggle("Start them again after the update", isOn: $restartContainers).toggleStyle(.checkbox)
                         .disabled(updater.phase.isActive)
                 }
             }
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: AppRadius.small))
+        .cliSheetCard()
+    }
+
+    private func infoRow(_ symbol: String, _ text: String, monospaced: Bool = false) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: symbol).foregroundColor(.secondary).frame(width: 16)
+            Text(text)
+                .font(monospaced ? .callout.monospaced() : .callout)
+                .foregroundColor(monospaced ? .secondary : .primary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     @ViewBuilder
@@ -141,8 +187,12 @@ struct ContainerCLIUpdateSheet: View {
             EmptyView()
         case .downloading(let fraction):
             VStack(alignment: .leading, spacing: 4) {
-                Text("Downloading…").font(.caption)
-                if let fraction { ProgressView(value: fraction) } else { ProgressView() }
+                HStack {
+                    Text("Downloading…").font(.callout)
+                    Spacer()
+                    if let fraction { Text("\(Int(fraction * 100))%").font(.callout.monospacedDigit()).foregroundColor(.secondary) }
+                }
+                if let fraction { ProgressView(value: fraction) } else { ProgressView().progressViewStyle(.linear) }
             }
         case .verifying: phaseLine("Verifying signature…")
         case .stoppingService: phaseLine("Stopping the container service…")
@@ -150,14 +200,14 @@ struct ContainerCLIUpdateSheet: View {
         case .startingService: phaseLine("Starting the container service…")
         case .restartingContainers: phaseLine("Restarting containers…")
         case .done(let version):
-            Label("Updated to v\(version).", systemImage: "checkmark.circle.fill").foregroundColor(.green)
+            Label(isFreshInstall ? "Installed v\(version). The container service is running." : "Updated to v\(version).", systemImage: "checkmark.circle.fill").foregroundColor(.green)
         case .failed(let message):
-            Label(message, systemImage: "xmark.circle.fill").foregroundColor(.red).font(.caption).textSelection(.enabled)
+            Label(message, systemImage: "xmark.circle.fill").foregroundColor(.red).font(.callout).textSelection(.enabled)
         }
     }
 
     private func phaseLine(_ text: String) -> some View {
-        HStack(spacing: 8) { ProgressView().scaleEffect(0.7); Text(text).font(.caption) }
+        HStack(spacing: 8) { ProgressView().controlSize(.small); Text(text).font(.callout) }
     }
 
     private func start() {

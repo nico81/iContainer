@@ -17,6 +17,21 @@ The format follows Keep a Changelog, and versions use semantic versioning:
   right there; the same notes are reachable from the Service page and the
   update alert, and the update sheet shows "What's new in vX" above the
   install plan. Update Now on the banner stays one click.
+- **Install the Apple container CLI from the app.** When the CLI isn't
+  found, the old "Setup Required" warning is replaced by a welcome screen
+  with *Install container CLI*: same verified flow as the updater (official
+  signed package, `spctl` + pinned Apple team ID, macOS's own password
+  prompt), then the service is started with `--enable-kernel-install` so a
+  first start can fetch Apple's default Linux kernel instead of stalling on
+  an interactive prompt. *Check Again*, *Set CLI Path…* and a Homebrew hint
+  remain, and the screen re-checks every few seconds so an install done
+  elsewhere is picked up without relaunching.
+
+### Changed
+- Redesigned the CLI install/update sheet and the CLI release-notes sheet:
+  shared header, "Installed → Latest" version blocks, detail rows with
+  icons, download percentage, and macOS-standard button placement
+  (*Close* then the primary action, bottom right).
 
 ### Fixed
 - "A new version of iContainer is available" now has an **Install Update…**

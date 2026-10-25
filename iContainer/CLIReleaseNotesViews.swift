@@ -89,6 +89,64 @@ struct CLIReleaseHighlightsView: View {
     }
 }
 
+/// Header shared by the CLI sheets (install / update / release notes).
+struct CLISheetHeader: View {
+    let title: String
+    var subtitle: String = "From the official apple/container release on GitHub"
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "shippingbox.fill")
+                .font(.system(size: 22, weight: .medium))
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .background(LinearGradient(colors: [Color.accentColor.opacity(0.85), Color.accentColor], startPoint: .top, endPoint: .bottom),
+                            in: RoundedRectangle(cornerRadius: 10))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.title3.weight(.semibold))
+                Text(subtitle).font(.callout).foregroundColor(.secondary)
+            }
+        }
+    }
+}
+
+/// "INSTALLED v1.6.0 → LATEST v1.6.1".
+struct CLIVersionTransition: View {
+    let fromLabel: String
+    let fromValue: String
+    let toLabel: String
+    let toValue: String
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 16) {
+            block(fromLabel, fromValue, emphasized: false)
+            Image(systemName: "arrow.right").font(.title3).foregroundColor(.secondary)
+            block(toLabel, toValue, emphasized: true)
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func block(_ label: String, _ value: String, emphasized: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label.uppercased()).font(.caption2.weight(.semibold)).foregroundColor(.secondary)
+            Text(value)
+                .font(.title2.monospacedDigit().weight(emphasized ? .semibold : .regular))
+                .foregroundColor(emphasized ? .accentColor : .secondary)
+        }
+    }
+}
+
+extension View {
+    /// The tinted, hairline-outlined box the CLI sheets group content in.
+    func cliSheetCard() -> some View {
+        self
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: AppRadius.card))
+            .overlay(RoundedRectangle(cornerRadius: AppRadius.card).stroke(Color.hairline))
+    }
+}
+
 /// Full release notes for a container CLI version: highlights (all of them)
 /// and the "What's Changed" list, with Update Now and a GitHub link.
 struct CLIReleaseNotesSheet: View {
@@ -103,45 +161,45 @@ struct CLIReleaseNotesSheet: View {
     @Environment(\.openURL) private var openURL
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Apple container \(version)").font(.title2.weight(.semibold))
-                if let installedVersion {
-                    Text("Installed v\(installedVersion)").font(.caption).foregroundColor(.secondary)
-                }
-            }
-            .padding(20)
+        VStack(alignment: .leading, spacing: 16) {
+            CLISheetHeader(title: "What's new in container \(version)", subtitle: "Release notes from apple/container on GitHub")
 
-            Divider()
+            CLIVersionTransition(
+                fromLabel: "Installed", fromValue: installedVersion.map { "v\($0)" } ?? "None",
+                toLabel: "Latest", toValue: "v\(version)"
+            )
+            .cliSheetCard()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 14) {
                     if let notes, !notes.isEmpty {
                         if !notes.breakingItems.isEmpty {
                             Label("This release has \(notes.breakingItems.count) breaking change\(notes.breakingItems.count == 1 ? "" : "s"), marked below.", systemImage: "exclamationmark.triangle.fill")
-                                .font(.caption)
+                                .font(.callout)
                                 .foregroundColor(.orange)
                         }
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Highlights").font(.headline)
-                            CLIReleaseHighlightsView(notes: notes)
+                        if !notes.highlights.isEmpty {
+                            section("Highlights", symbol: "sparkles") {
+                                CLIReleaseHighlightsView(notes: notes)
+                            }
                         }
                         if !notes.changes.isEmpty {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("What's Changed").font(.headline)
-                                ForEach(notes.changes) { change in
-                                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                                        Text("•").foregroundColor(.secondary)
-                                        if let url = change.url {
-                                            Button(change.title) { openURL(url) }.buttonStyle(.plain)
-                                        } else {
-                                            Text(change.title)
+                            section("What's Changed", symbol: "list.bullet") {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    ForEach(notes.changes) { change in
+                                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                            Text("•").foregroundColor(.secondary)
+                                            if let url = change.url {
+                                                Button(change.title) { openURL(url) }.buttonStyle(.plain)
+                                            } else {
+                                                Text(change.title)
+                                            }
+                                            if let author = change.author {
+                                                Text("@\(author)").foregroundColor(.secondary)
+                                            }
                                         }
-                                        if let author = change.author {
-                                            Text("@\(author)").foregroundColor(.secondary)
-                                        }
+                                        .font(.caption)
                                     }
-                                    .font(.caption)
                                 }
                             }
                         }
@@ -151,24 +209,41 @@ struct CLIReleaseNotesSheet: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(20)
             }
+            .frame(maxHeight: 340)
 
             Divider()
 
-            HStack {
+            HStack(spacing: 10) {
                 if let releaseURL {
-                    Button("View on GitHub") { openURL(releaseURL) }
+                    Button {
+                        openURL(releaseURL)
+                    } label: {
+                        Label("View on GitHub", systemImage: "arrow.up.right.square")
+                    }
+                    .buttonStyle(.link)
                 }
                 Spacer()
-                Button("Close", action: onClose).keyboardShortcut(.escape, modifiers: [])
+                Button("Close", action: onClose)
+                    .keyboardShortcut(onUpdate == nil ? .defaultAction : .cancelAction)
                 if let onUpdate {
                     Button("Update Now") { onClose(); onUpdate() }
+                        .buttonStyle(.borderedProminent)
                         .keyboardShortcut(.defaultAction)
                 }
             }
-            .padding(20)
+            .controlSize(.large)
         }
-        .frame(width: 600, height: 520)
+        .padding(24)
+        .frame(width: 600)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func section<Content: View>(_ title: String, symbol: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(title, systemImage: symbol).font(.headline)
+            content()
+        }
+        .cliSheetCard()
     }
 }

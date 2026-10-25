@@ -212,10 +212,19 @@ struct ContentView: View {
     var body: some View {
         Group {
             if !containerManager.missingDependencies.isEmpty {
-                DependencyErrorView(errors: containerManager.missingDependencies)
+                DependencyErrorView(errors: containerManager.missingDependencies) {
+                    cliUpdateAutoStart = true
+                    showingCLIUpdateSheet = true
+                }
             } else {
                 mainContent
             }
+        }
+        // On the outer Group, not mainContent: the setup screen (no CLI yet)
+        // opens it too, and it must survive the swap to mainContent once the
+        // install finishes.
+        .sheet(isPresented: $showingCLIUpdateSheet) {
+            ContainerCLIUpdateSheet(autoStart: cliUpdateAutoStart, onClose: { showingCLIUpdateSheet = false })
         }
         .alert(
             "Container update available",
@@ -310,9 +319,6 @@ struct ContentView: View {
                 } : nil,
                 onClose: { showingCLIReleaseNotes = false }
             )
-        }
-        .sheet(isPresented: $showingCLIUpdateSheet) {
-            ContainerCLIUpdateSheet(autoStart: cliUpdateAutoStart, onClose: { showingCLIUpdateSheet = false })
         }
         .onReceive(appNavigation.$cliUpdateRequestID.dropFirst()) { _ in
             cliUpdateAutoStart = appNavigation.cliUpdateAutoStart
