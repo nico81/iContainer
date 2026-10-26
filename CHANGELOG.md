@@ -7,6 +7,8 @@ The format follows Keep a Changelog, and versions use semantic versioning:
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-10-26
+
 ### Added
 - **See what's new before updating the Apple container CLI.** The
   "newer version available" banner on the dashboard now lists the release
@@ -39,6 +41,12 @@ The format follows Keep a Changelog, and versions use semantic versioning:
   Sparkle deliberately skips its update check on an app's very first launch
   and otherwise checks once a day, so a fresh install could show the banner
   without ever offering to install — now it's one click.
+
+### Notes
+- Used with Apple `container` CLI **1.6.0** and **1.6.1** (1.6.1 installed
+  both through the new in-app installer and the updater). 1.6.1 renames the
+  experimental `container k8s` plugin to `container cluster`; iContainer
+  doesn't use it.
 
 ## [2.5.0] - 2026-10-19
 

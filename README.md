@@ -30,7 +30,7 @@ A native macOS app to manage [Apple Container](https://github.com/apple/containe
 - **Apple container service** — start/stop the system service; view CLI vs service version, host info, paths, storage (`container system df`), the service defaults (`config.toml`), service-wide stats, and live system logs.
 - **Docker interop** 🐳 — import images from a local Docker installation (`docker save` → `container image load`, no registry round-trip) and **create a container from an existing Docker container**: iContainer reads its `docker inspect` configuration, translates ports, mounts, environment, entrypoint/command, user, resources and network for Apple Container, and lists anything that has no equivalent before you confirm. Docker is never modified.
 - **Docker Compose (MVP)** — open a `compose.yaml` / `docker-compose.yml`, review the services it can run and the directives it can't map, then *Up* / *Down* the project on a shared per-project network in `depends_on` order.
-- **One-click Apple container CLI updates** — when a new `container` CLI is released, *Update Now* downloads the signed Apple package, verifies its signature and notarization, stops the service, installs it through macOS's own administrator prompt (the app never sees your password) and starts the service again. Homebrew installs are upgraded with `brew`.
+- **One-click Apple container CLI install & updates** — no CLI yet? *Install container CLI* sets it up from the welcome screen. When a new `container` release is out, the dashboard shows its highlights (breaking changes flagged) and full release notes *before* you update; *Update Now* downloads the signed Apple package, verifies its signature and notarization, stops the service, installs it through macOS's own administrator prompt (the app never sees your password) and starts the service again. Homebrew installs are upgraded with `brew`.
 - **Automatic updates** — iContainer keeps itself up to date via [Sparkle](https://sparkle-project.org): it checks in the background and installs new versions in place (with your confirmation and the release notes), verified by signature. It also notifies you when a newer release of the `container` CLI is available.
 - **Notifications** — optional system notifications when a container stops or an action fails.
 - **Settings** — theme, launch at login, auto-start service, quit behavior, polling cadence, confirmation dialogs, default shell, terminal font, custom CLI path, default registry.
@@ -47,16 +47,18 @@ A native macOS app to manage [Apple Container](https://github.com/apple/containe
 
 ## Getting started
 
-1. Install the Apple Container CLI: download the latest `.pkg` from the
-   [releases page](https://github.com/apple/container/releases) and install it,
-   confirming the recommended default kernel.
-2. Download the latest iContainer `.dmg` from
+1. Download the latest iContainer `.dmg` from
    [Releases](../../releases), open it and drag **iContainer** into
    Applications; or install via Homebrew (see below), or build from source
    (see below).
-3. Start the container service from the app — everything else flows from there.
-
-If the CLI is missing, the app shows a setup screen with a download link instead of the main UI.
+2. Open iContainer. If the Apple Container CLI isn't installed yet, click
+   **Install container CLI** on the welcome screen: the app downloads the
+   signed package from Apple's [releases page](https://github.com/apple/container/releases),
+   verifies it, installs it (macOS asks for your administrator password) and
+   starts the service, including the default Linux kernel. You can also
+   install the `.pkg` yourself or run `brew install container`; the app
+   picks it up automatically.
+3. Everything else flows from there.
 
 iContainer updates itself via [Sparkle](https://sparkle-project.org): it
 checks for new versions in the background and, when one is available, shows a
