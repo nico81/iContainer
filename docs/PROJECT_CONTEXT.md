@@ -174,6 +174,21 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
   df`, `system property list`, `stats` table + JSON — all unchanged from
   1.4.1. 1.5.0 fixes: empty image entrypoints now run (helps Docker clones),
   DNS egress loss; ⌨️ only `container k8s start` (unused).
+- Verified compatible with `container` CLI **1.7.1** (2026-11-16, commit
+  `a15b460`; updated via the in-app updater, service restarted on its own).
+  Live 1.7.1 output fed through the app's real parsers (temporary test):
+  list/inspect, images, machines, networks, volumes, `system status`,
+  `system df`, `system property list`, `stats` table + JSON — all pass.
+  Changes that matter: `stats --format json` adds `cpuUtilization`
+  (fraction of one core, e.g. 0.9996 ≈ 100%); `container ls` / `system
+  status` now exclude cluster nodes (label plugin=cluster), like machines;
+  `config.toml` `[dns]` gains `nameservers`/`search`/`options`; new launchd
+  services `container-core-clusters` and `cluster-hoststore`. All ⌨️
+  changes are in the experimental `container cluster` plugin (unused):
+  `load-image` removed for `--shared-image-store`, `cluster ls` one row per
+  cluster (+ `--nodes`, has `--format json`), lifecycle commands skip nodes.
+  Still broken: `container cp` ignores volume mounts (writes/reads the
+  rootfs under the mount point) — use tar over `exec` for volumes.
 - `container system property list` prints TOML (`[build]`, `[container]`,
   `[dns]`); `CLIParsers.parseSystemProperties` / `systemDNSDomain(from:)`
   read it.

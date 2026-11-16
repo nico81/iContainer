@@ -7,6 +7,14 @@ The format follows Keep a Changelog, and versions use semantic versioning:
 
 ## [Unreleased]
 
+### Notes
+- Verified with Apple `container` CLI **1.7.1** (installed with the in-app
+  updater): containers, images, machines, networks, volumes, service
+  status, disk usage and stats parse unchanged. 1.7.1's breaking changes
+  are all in the experimental `container cluster` (Kubernetes) plugin,
+  which iContainer doesn't use; cluster nodes no longer show up in the
+  container list.
+
 ## [2.6.0] - 2026-10-26
 
 ### Added
