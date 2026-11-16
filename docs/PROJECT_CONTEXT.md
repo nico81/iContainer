@@ -189,6 +189,14 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
   cluster (+ `--nodes`, has `--format json`), lifecycle commands skip nodes.
   Still broken: `container cp` ignores volume mounts (writes/reads the
   rootfs under the mount point) — use tar over `exec` for volumes.
+- Volume file copies (`VolumeFileTransfer.swift`, 2.7): tar streamed through
+  `container exec -i` (running container mounting the volume) or `container
+  run --rm -i -v vol:/__vol` (unused volume; read-only mount for reads).
+  Upload = host `tar --no-mac-metadata --no-xattrs` → in-container
+  `tar -x -o` + `chown -R` to the destination folder's owner; replace =
+  separate `rm -rf -- <abs paths>` first. Verified on busybox tar (alpine)
+  and GNU tar (postgres/debian): names with spaces or a leading dash, owner
+  inheritance, 40 MB byte-identical round trip, cancel.
 - `container system property list` prints TOML (`[build]`, `[container]`,
   `[dns]`); `CLIParsers.parseSystemProperties` / `systemDNSDomain(from:)`
   read it.

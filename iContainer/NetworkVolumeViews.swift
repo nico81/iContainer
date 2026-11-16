@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 // MARK: - Sidebar rows
 
@@ -713,20 +714,47 @@ struct CreateVolumeSheet: View {
 
 // MARK: - Contents browser
 
-/// Read-only directory browser for a volume's filesystem. Listing goes
-/// through `ContainerizationWrapper.listVolumeDirectory`: instant via
-/// `exec` when a running container mounts the volume, otherwise through a
-/// short-lived helper container (the only way to read an ext4 image from
-/// macOS).
+/// Directory browser and file manager for a volume's filesystem. Listing
+/// goes through `ContainerizationWrapper.listVolumeDirectory`; copies, new
+/// folders, deletes and previews through `VolumeFileOperations`. Both reach
+/// the volume via `exec` when a running container mounts it, otherwise
+/// through a short-lived helper container (the only way to read an ext4
+/// image from macOS).
 struct VolumeContentsBrowser: View {
     let volume: ContainerVolume
     @EnvironmentObject var containerManager: ContainerizationWrapper
+    @StateObject private var files = VolumeFileOperations()
     @State private var pathComponents: [String] = []
     @State private var entries: [DirectoryEntry] = []
     @State private var source: ContainerizationWrapper.VolumeListingSource?
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showHidden = false
+
+    @State private var selection: Set<String> = []
+    @State private var selectionAnchor: String?
+    @State private var isDropTargeted = false
+    @State private var dropTargetFolder: String?
+    @State private var pendingUpload: PendingUpload?
+    @State private var pendingDownload: PendingDownload?
+    @State private var pendingDelete: [String]?
+    @State private var showingNewFolder = false
+    @State private var newFolderName = ""
+    @State private var preview: VolumeFileOperations.Preview?
+
+    /// Files waiting for a Replace / Skip decision.
+    private struct PendingUpload {
+        let urls: [URL]
+        let relativeDirectory: String
+        let conflicts: [String]
+    }
+
+    private struct PendingDownload {
+        let names: [String]
+        let relativeDirectory: String
+        let destination: URL
+        let conflicts: [String]
+    }
 
     private var currentPath: String { pathComponents.joined(separator: "/") }
     private var visibleEntries: [DirectoryEntry] {
@@ -738,28 +766,17 @@ struct VolumeContentsBrowser: View {
     }
     private var hiddenCount: Int { entries.count - entries.filter { !$0.name.hasPrefix(".") && $0.name != "lost+found" }.count }
 
+    /// `nil` while only stopped containers reference the volume: nothing can
+    /// be read or written then.
+    private var access: VolumeFileCommands.Access? { try? containerManager.volumeFileAccess(volume) }
+    private var canModify: Bool { access != nil && !files.isBusy && !isLoading }
+    private var selectedNames: [String] { visibleEntries.map(\.name).filter { selection.contains($0) } }
+
     var body: some View {
         DetailSection(title: "Contents", icon: "folder") {
-            HStack(spacing: 6) {
-                Button { pathComponents = [] } label: { Image(systemName: "internaldrive") }
-                    .buttonStyle(.plain)
-                    .disabled(pathComponents.isEmpty)
-                    .help("Volume root")
-                ForEach(Array(pathComponents.enumerated()), id: \.offset) { index, component in
-                    Text("/").foregroundColor(.secondary)
-                    Button(component) { pathComponents = Array(pathComponents.prefix(index + 1)) }
-                        .buttonStyle(.plain)
-                        .font(InfoTextStyle.monospacedValueFont)
-                        .disabled(index == pathComponents.count - 1)
-                }
-                if pathComponents.isEmpty { Text("/").font(InfoTextStyle.monospacedValueFont).foregroundColor(.secondary) }
-                Spacer()
-                Toggle("Hidden", isOn: $showHidden).toggleStyle(.checkbox).font(.caption)
-                Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }
-                    .buttonStyle(.borderless)
-                    .disabled(isLoading)
-                    .help("Refresh")
-            }
+            breadcrumb
+            actionBar
+            transferStatus
 
             if isLoading && entries.isEmpty {
                 HStack(spacing: 8) {
@@ -774,26 +791,17 @@ struct VolumeContentsBrowser: View {
                 }
             } else if let errorMessage {
                 Label(errorMessage, systemImage: "xmark.circle.fill").font(.caption).foregroundColor(.red).textSelection(.enabled)
-            } else if visibleEntries.isEmpty {
-                Text(entries.isEmpty ? "Empty directory." : "Only hidden entries here (\(hiddenCount)).")
-                    .font(.callout).foregroundColor(.secondary)
             } else {
-                VStack(spacing: 0) {
-                    ForEach(visibleEntries) { entry in
-                        entryRow(entry)
-                        if entry.id != visibleEntries.last?.id { Divider().opacity(0.5) }
-                    }
-                }
-                .background(Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: AppRadius.small))
+                listing
             }
 
-            HStack {
+            HStack(spacing: 4) {
                 if let source {
                     switch source {
                     case .runningContainer(let name):
                         Text("Live view through container \(name).").font(.caption2).foregroundColor(.secondary)
                     case .helperContainer(let image):
-                        Text("Read with a temporary container (\(image), read-only), removed after each listing.").font(.caption2).foregroundColor(.secondary)
+                        Text("Read with a temporary container (\(image)), removed after each operation.").font(.caption2).foregroundColor(.secondary)
                     }
                 }
                 if hiddenCount > 0 && !showHidden {
@@ -801,23 +809,210 @@ struct VolumeContentsBrowser: View {
                 }
                 Spacer()
             }
+            if access != nil {
+                Text("Double-click a folder to open it or a file to preview it. Drop files from the Finder to copy them in; they get the owner of the folder they land in.")
+                    .font(.caption2).foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
-        .task(id: "\(volume.name)|\(currentPath)") { await load() }
+        .task(id: "\(volume.name)|\(currentPath)") {
+            selection = []
+            selectionAnchor = nil
+            await load()
+        }
+        .confirmationDialog(
+            pendingUpload.map { "\($0.conflicts.count == 1 ? "“\($0.conflicts[0])” already exists" : "\($0.conflicts.count) items already exist") in \(displayPath($0.relativeDirectory))." } ?? "",
+            isPresented: Binding(get: { pendingUpload != nil }, set: { if !$0 { pendingUpload = nil } }),
+            titleVisibility: .visible,
+            presenting: pendingUpload
+        ) { pending in
+            Button("Replace", role: .destructive) { startUpload(pending.urls, into: pending.relativeDirectory, replacing: pending.conflicts) }
+            if pending.conflicts.count < pending.urls.count {
+                Button("Skip Existing") {
+                    startUpload(pending.urls.filter { !pending.conflicts.contains($0.lastPathComponent) }, into: pending.relativeDirectory, replacing: [])
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("Replacing removes the existing item first, as the Finder does.")
+        }
+        .confirmationDialog(
+            pendingDownload.map { "\($0.conflicts.count == 1 ? "“\($0.conflicts[0])” already exists" : "\($0.conflicts.count) items already exist") in \($0.destination.lastPathComponent)." } ?? "",
+            isPresented: Binding(get: { pendingDownload != nil }, set: { if !$0 { pendingDownload = nil } }),
+            titleVisibility: .visible,
+            presenting: pendingDownload
+        ) { pending in
+            Button("Replace", role: .destructive) { startDownload(pending.names, from: pending.relativeDirectory, to: pending.destination) }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("Files with the same name on the Mac are overwritten.")
+        }
+        .confirmationDialog(
+            pendingDelete.map { "Delete \(VolumeFileOperations.describe($0)) from the volume?" } ?? "",
+            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+            titleVisibility: .visible,
+            presenting: pendingDelete
+        ) { names in
+            Button("Delete", role: .destructive) { performDelete(names) }
+            Button("Cancel", role: .cancel) {}
+        } message: { names in
+            Text("\(names.prefix(5).joined(separator: ", "))\(names.count > 5 ? " and \(names.count - 5) more" : "") will be permanently deleted, folders with everything inside. This can't be undone.")
+        }
+        .alert("New Folder", isPresented: $showingNewFolder) {
+            TextField("Name", text: $newFolderName)
+            Button("Create") { performMakeDirectory(newFolderName.trimmingCharacters(in: .whitespaces)) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Create a folder in \(displayPath(currentPath)).")
+        }
+        .sheet(item: $preview) { item in
+            VolumeFilePreviewSheet(
+                preview: item,
+                onSave: {
+                    preview = nil
+                    let directory = (item.path as NSString).deletingLastPathComponent
+                    chooseDownloadDestination(names: [item.name], from: directory)
+                },
+                onClose: { preview = nil }
+            )
+        }
+    }
+
+    // MARK: Header rows
+
+    private var breadcrumb: some View {
+        HStack(spacing: 6) {
+            Button { pathComponents = [] } label: { Image(systemName: "internaldrive") }
+                .buttonStyle(.plain)
+                .disabled(pathComponents.isEmpty)
+                .help("Volume root")
+            ForEach(Array(pathComponents.enumerated()), id: \.offset) { index, component in
+                Text("/").foregroundColor(.secondary)
+                Button(component) { pathComponents = Array(pathComponents.prefix(index + 1)) }
+                    .buttonStyle(.plain)
+                    .font(InfoTextStyle.monospacedValueFont)
+                    .disabled(index == pathComponents.count - 1)
+            }
+            if pathComponents.isEmpty { Text("/").font(InfoTextStyle.monospacedValueFont).foregroundColor(.secondary) }
+            Spacer()
+            Toggle("Hidden", isOn: $showHidden).toggleStyle(.checkbox).font(.caption)
+            Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }
+                .buttonStyle(.borderless)
+                .disabled(isLoading)
+                .help("Refresh")
+        }
+    }
+
+    private var actionBar: some View {
+        HStack(spacing: 8) {
+            Button { chooseFilesToUpload() } label: { Label("Add Files…", systemImage: "plus") }
+                .help("Copy files or folders from the Mac into this folder")
+            Button {
+                newFolderName = ""
+                showingNewFolder = true
+            } label: { Label("New Folder…", systemImage: "folder.badge.plus") }
+            Divider().frame(height: 16)
+            Button { chooseDownloadDestination(names: selectedNames, from: currentPath) } label: {
+                Label("Save to Mac…", systemImage: "square.and.arrow.down")
+            }
+            .disabled(selection.isEmpty)
+            .help("Copy the selected items to a folder on the Mac")
+            Button { pendingDelete = selectedNames } label: { Label("Delete…", systemImage: "trash") }
+                .disabled(selection.isEmpty)
+            Spacer()
+            if !selection.isEmpty {
+                Text("\(selection.count) selected").font(.caption).foregroundColor(.secondary)
+            }
+        }
+        .controlSize(.small)
+        .disabled(!canModify)
+    }
+
+    @ViewBuilder
+    private var transferStatus: some View {
+        if let activity = files.activity {
+            HStack(spacing: 10) {
+                if let total = activity.bytesTotal, total > 0 {
+                    ProgressView(value: min(1, Double(activity.bytesDone) / Double(total))).frame(width: 140)
+                } else {
+                    ProgressView().controlSize(.small)
+                }
+                Text(activity.title).font(.caption).lineLimit(1).truncationMode(.middle)
+                if activity.bytesDone > 0 {
+                    Text(activity.bytesTotal.map { "\(VolumeFileOperations.format(min(activity.bytesDone, $0))) of \(VolumeFileOperations.format($0))" }
+                         ?? VolumeFileOperations.format(activity.bytesDone))
+                        .font(.caption.monospacedDigit()).foregroundColor(.secondary)
+                }
+                Spacer()
+                if activity.cancellable {
+                    Button("Cancel") { files.cancel() }.controlSize(.small)
+                }
+            }
+            .padding(8)
+            .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: AppRadius.small))
+        } else if let message = files.errorMessage {
+            HStack(alignment: .firstTextBaseline) {
+                Label(message, systemImage: "xmark.circle.fill").font(.caption).foregroundColor(.red).textSelection(.enabled)
+                Spacer()
+                Button { files.clearMessages() } label: { Image(systemName: "xmark") }.buttonStyle(.borderless).controlSize(.small)
+            }
+        } else if let message = files.statusMessage {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Label(message, systemImage: "checkmark.circle.fill").font(.caption).foregroundColor(.green)
+                if !files.revealURLs.isEmpty {
+                    Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting(files.revealURLs) }
+                        .buttonStyle(.link).font(.caption)
+                }
+                Spacer()
+                Button { files.clearMessages() } label: { Image(systemName: "xmark") }.buttonStyle(.borderless).controlSize(.small)
+            }
+        }
+    }
+
+    // MARK: Listing
+
+    @ViewBuilder
+    private var listing: some View {
+        Group {
+            if visibleEntries.isEmpty {
+                Text(entries.isEmpty ? "Empty folder. Drop files here or use Add Files…" : "Only hidden entries here (\(hiddenCount)).")
+                    .font(.callout).foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 60)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(visibleEntries) { entry in
+                        entryRow(entry)
+                        if entry.id != visibleEntries.last?.id { Divider().opacity(0.5) }
+                    }
+                }
+            }
+        }
+        .background(Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: AppRadius.small))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppRadius.small)
+                .stroke(Color.accentColor, lineWidth: 2)
+                .opacity(isDropTargeted && dropTargetFolder == nil ? 1 : 0)
+        )
+        .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
+            guard canModify else { return false }
+            receiveDrop(providers, into: currentPath)
+            return true
+        }
     }
 
     private func entryRow(_ entry: DirectoryEntry) -> some View {
-        HStack(spacing: 10) {
+        let isSelected = selection.contains(entry.name)
+        let isDropTarget = dropTargetFolder == entry.name
+        return HStack(spacing: 10) {
             Image(systemName: entry.isDirectory ? "folder.fill" : entry.isSymlink ? "arrow.triangle.turn.up.right.diamond" : "doc")
                 .foregroundColor(entry.isDirectory ? .accentColor : .secondary)
                 .frame(width: 16)
+            Text(entry.isSymlink ? "\(entry.name) → \(entry.linkTarget ?? "?")" : entry.name)
+                .font(InfoTextStyle.monospacedValueFont)
+                .lineLimit(1)
+                .truncationMode(.middle)
             if entry.isDirectory {
-                Button(entry.name) { pathComponents.append(entry.name) }
-                    .buttonStyle(.plain)
-                    .font(InfoTextStyle.monospacedValueFont)
-            } else {
-                Text(entry.isSymlink ? "\(entry.name) → \(entry.linkTarget ?? "?")" : entry.name)
-                    .font(InfoTextStyle.monospacedValueFont)
-                    .textSelection(.enabled)
+                Image(systemName: "chevron.right").font(.caption2).foregroundColor(.secondary)
             }
             Spacer()
             Text(entry.displaySize).font(.caption.monospacedDigit()).foregroundColor(.secondary).frame(width: 70, alignment: .trailing)
@@ -825,6 +1020,167 @@ struct VolumeContentsBrowser: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
+        .background(
+            (isDropTarget ? Color.accentColor.opacity(0.25) : isSelected ? Color.accentColor.opacity(0.15) : Color.clear),
+            in: RoundedRectangle(cornerRadius: 4)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) { open(entry) }
+        .onTapGesture { select(entry) }
+        .contextMenu { contextMenu(for: entry) }
+        .onDrop(of: [.fileURL], isTargeted: Binding(
+            get: { dropTargetFolder == entry.name },
+            set: { targeted in
+                guard entry.isDirectory else { return }
+                if targeted { dropTargetFolder = entry.name } else if dropTargetFolder == entry.name { dropTargetFolder = nil }
+            }
+        )) { providers in
+            // Files dropped on a folder row land inside that folder.
+            guard canModify else { return false }
+            let target = entry.isDirectory ? VolumeFileCommands.sanitizedRelativePath(currentPath + "/" + entry.name) : currentPath
+            receiveDrop(providers, into: target)
+            return true
+        }
+    }
+
+    @ViewBuilder
+    private func contextMenu(for entry: DirectoryEntry) -> some View {
+        let targets = selection.contains(entry.name) ? selectedNames : [entry.name]
+        if targets.count == 1 {
+            Button(entry.isDirectory ? "Open" : "Preview") { open(entry) }
+                .disabled(access == nil || (entry.isSymlink && !entry.isDirectory && entry.linkTarget == nil))
+            Divider()
+        }
+        Button("Save to Mac…") { chooseDownloadDestination(names: targets, from: currentPath) }
+            .disabled(!canModify)
+        Button("Delete…") { pendingDelete = targets }
+            .disabled(!canModify)
+    }
+
+    // MARK: Interaction
+
+    private func select(_ entry: DirectoryEntry) {
+        let modifiers = NSEvent.modifierFlags
+        if modifiers.contains(.command) {
+            if selection.contains(entry.name) { selection.remove(entry.name) } else { selection.insert(entry.name) }
+            selectionAnchor = entry.name
+        } else if modifiers.contains(.shift), let anchor = selectionAnchor,
+                  let from = visibleEntries.firstIndex(where: { $0.name == anchor }),
+                  let to = visibleEntries.firstIndex(where: { $0.name == entry.name }) {
+            selection = Set(visibleEntries[min(from, to)...max(from, to)].map(\.name))
+        } else {
+            selection = [entry.name]
+            selectionAnchor = entry.name
+        }
+    }
+
+    private func open(_ entry: DirectoryEntry) {
+        if entry.isDirectory {
+            pathComponents.append(entry.name)
+            return
+        }
+        guard let access else { return }
+        Task {
+            if let result = await files.preview(entry.name, in: currentPath, access: access) {
+                preview = result
+            }
+        }
+    }
+
+    private func receiveDrop(_ providers: [NSItemProvider], into relativeDirectory: String) {
+        Task {
+            var urls: [URL] = []
+            for provider in providers where provider.canLoadObject(ofClass: URL.self) {
+                if let url = try? await provider.loadFileURL() { urls.append(url) }
+            }
+            dropTargetFolder = nil
+            requestUpload(urls, into: relativeDirectory)
+        }
+    }
+
+    private func chooseFilesToUpload() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = true
+        panel.prompt = "Add"
+        panel.message = "Choose files or folders to copy into \(displayPath(currentPath)) on volume \(volume.name)."
+        guard panel.runModal() == .OK else { return }
+        requestUpload(panel.urls, into: currentPath)
+    }
+
+    /// Checks for name clashes in the destination before copying.
+    private func requestUpload(_ urls: [URL], into relativeDirectory: String) {
+        // One entry per name: two dropped items called the same would collide.
+        var seen = Set<String>()
+        let unique = urls.filter { VolumeFileCommands.isValidName($0.lastPathComponent) && seen.insert($0.lastPathComponent).inserted }
+        guard !unique.isEmpty else { return }
+        Task {
+            let existing: Set<String>
+            if relativeDirectory == currentPath {
+                existing = Set(entries.map(\.name))
+            } else {
+                existing = Set((try? await containerManager.listVolumeDirectory(volume, path: relativeDirectory).entries.map(\.name)) ?? [])
+            }
+            let conflicts = unique.map(\.lastPathComponent).filter { existing.contains($0) }
+            if conflicts.isEmpty {
+                startUpload(unique, into: relativeDirectory, replacing: [])
+            } else {
+                pendingUpload = PendingUpload(urls: unique, relativeDirectory: relativeDirectory, conflicts: conflicts)
+            }
+        }
+    }
+
+    private func startUpload(_ urls: [URL], into relativeDirectory: String, replacing: [String]) {
+        guard let access, !urls.isEmpty else { return }
+        Task {
+            _ = await files.upload(urls, into: relativeDirectory, replacing: replacing, access: access)
+            await load()
+        }
+    }
+
+    private func chooseDownloadDestination(names: [String], from relativeDirectory: String) {
+        guard !names.isEmpty else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Save Here"
+        panel.message = "Choose where to save \(VolumeFileOperations.describe(names)) from volume \(volume.name)."
+        panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        guard panel.runModal() == .OK, let destination = panel.url else { return }
+        let conflicts = names.filter { FileManager.default.fileExists(atPath: destination.appendingPathComponent($0).path) }
+        if conflicts.isEmpty {
+            startDownload(names, from: relativeDirectory, to: destination)
+        } else {
+            pendingDownload = PendingDownload(names: names, relativeDirectory: relativeDirectory, destination: destination, conflicts: conflicts)
+        }
+    }
+
+    private func startDownload(_ names: [String], from relativeDirectory: String, to destination: URL) {
+        guard let access else { return }
+        Task { _ = await files.download(names, from: relativeDirectory, to: destination, access: access) }
+    }
+
+    private func performDelete(_ names: [String]) {
+        guard let access else { return }
+        Task {
+            if await files.delete(names, in: currentPath, access: access) { selection.subtract(names) }
+            await load()
+        }
+    }
+
+    private func performMakeDirectory(_ name: String) {
+        guard let access else { return }
+        Task {
+            _ = await files.makeDirectory(name, in: currentPath, access: access)
+            await load()
+        }
+    }
+
+    private func displayPath(_ relative: String) -> String {
+        "/" + VolumeFileCommands.sanitizedRelativePath(relative)
     }
 
     private func load() async {
@@ -835,9 +1191,73 @@ struct VolumeContentsBrowser: View {
             let result = try await containerManager.listVolumeDirectory(volume, path: currentPath)
             entries = result.entries
             source = result.source
+            selection.formIntersection(entries.map(\.name))
         } catch {
             entries = []
             errorMessage = error.localizedDescription
         }
+    }
+}
+
+private extension NSItemProvider {
+    /// The file URL of a Finder drag.
+    func loadFileURL() async throws -> URL? {
+        try await withCheckedThrowingContinuation { continuation in
+            _ = loadObject(ofClass: URL.self) { url, error in
+                if let error { continuation.resume(throwing: error) } else { continuation.resume(returning: url) }
+            }
+        }
+    }
+}
+
+/// Read-only text preview of a file inside a volume (first 256 KB).
+struct VolumeFilePreviewSheet: View {
+    let preview: VolumeFileOperations.Preview
+    let onSave: () -> Void
+    let onClose: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                Image(systemName: "doc.text").font(.title2).foregroundColor(.accentColor)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(preview.name).font(.title3.weight(.semibold)).lineLimit(1).truncationMode(.middle)
+                    Text("/" + preview.path).font(.caption.monospaced()).foregroundColor(.secondary).lineLimit(1).truncationMode(.middle)
+                }
+            }
+
+            if let text = preview.text {
+                ScrollView([.vertical, .horizontal]) {
+                    Text(text.isEmpty ? " " : text)
+                        .font(.system(.callout, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                }
+                .background(Color(NSColor.textBackgroundColor), in: RoundedRectangle(cornerRadius: AppRadius.small))
+                .overlay(RoundedRectangle(cornerRadius: AppRadius.small).stroke(Color.hairline))
+                if preview.truncated {
+                    Label("Showing the first 256 KB. Save it to the Mac to see the whole file.", systemImage: "scissors")
+                        .font(.caption).foregroundColor(.secondary)
+                }
+            } else {
+                VStack(spacing: 8) {
+                    Image(systemName: "doc.questionmark").font(.largeTitle).foregroundColor(.secondary)
+                    Text("This looks like a binary file, so there's no text to show.").foregroundColor(.secondary)
+                    Text("Save it to the Mac to open it with another app.").font(.caption).foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+
+            Divider()
+            HStack {
+                Spacer()
+                Button("Close", action: onClose).keyboardShortcut(.cancelAction)
+                Button("Save to Mac…", action: onSave).buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+            }
+            .controlSize(.large)
+        }
+        .padding(24)
+        .frame(width: 720, height: 560)
     }
 }

@@ -7,6 +7,21 @@ The format follows Keep a Changelog, and versions use semantic versioning:
 
 ## [Unreleased]
 
+### Added
+- **Copy files between the Mac and a volume.** The volume browser (volume
+  page *Contents* tab and container *Volumes* tab) becomes a small file
+  manager: *Add Files…* or drop files and folders from the Finder (onto the
+  list, or onto a folder row to put them inside it), select items and
+  *Save to Mac…*, *New Folder…*, *Delete…*, and double-click a file for a
+  text preview (first 256 KB; binaries are recognized). Name clashes ask to
+  Replace or Skip; copied items get the owner of the folder they land in, so
+  files dropped into a database's data directory belong to the database
+  user, not root. Transfers show progress and can be cancelled. Works
+  through the running container that mounts the volume, or a temporary
+  helper container when the volume is unused; Finder metadata (`._*` files,
+  extended attributes) is left behind. Multi-selection with ⌘-click and
+  ⇧-click, plus a context menu on every row.
+
 ### Notes
 - Verified with Apple `container` CLI **1.7.1** (installed with the in-app
   updater): containers, images, machines, networks, volumes, service

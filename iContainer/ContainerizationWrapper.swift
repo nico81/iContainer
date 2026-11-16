@@ -209,34 +209,44 @@ class ContainerizationWrapper: ObservableObject {
     /// to mount a volume that another container has, so the two cases are
     /// exclusive by construction).
     func listVolumeDirectory(_ volume: ContainerVolume, path: String) async throws -> (entries: [DirectoryEntry], source: VolumeListingSource) {
-        let relative = path.split(separator: "/").filter { !$0.isEmpty && $0 != ".." }.joined(separator: "/")
+        let access = try volumeFileAccess(volume)
+        let full = VolumeFileCommands.directory(access, path)
+        switch access {
+        case .exec(let container, _):
+            let output = try await runCommand(["exec", container, "ls", "-lA", full])
+            let name = (containers + systemContainers).first { $0.id == container }?.name ?? container
+            return (CLIParsers.parseDirectoryListing(output), .runningContainer(name))
+        case .helper(_, let image):
+            do {
+                let output = try await runCommand(VolumeFileCommands.cliArguments(access, writable: false, stdin: false, command: ["ls", "-lA", full]))
+                return (CLIParsers.parseDirectoryListing(output), .helperContainer(image: image))
+            } catch {
+                // Surface the `ls` error line, not the CLI's progress spam.
+                let message = error.localizedDescription
+                    .split(whereSeparator: \.isNewline)
+                    .map(String.init)
+                    .last { $0.contains("ls:") || $0.lowercased().contains("error") } ?? message(from: error)
+                throw NSError(domain: "iContainer", code: 3, userInfo: [NSLocalizedDescriptionKey: message])
+            }
+        }
+    }
+
+    /// How the volume's files can be reached right now: through a running
+    /// container that mounts it (live, instant) or a temporary helper
+    /// container (~1 s per operation). Throws while only stopped containers
+    /// reference it — the CLI then refuses to mount it anywhere else.
+    func volumeFileAccess(_ volume: ContainerVolume) throws -> VolumeFileCommands.Access {
         if let host = containers(usingVolume: volume.name).first(where: { $0.status == .running }),
            let mount = host.volumeMounts.first(where: { $0.name == volume.name }), !mount.destination.isEmpty {
-            let full = relative.isEmpty ? mount.destination : mount.destination + "/" + relative
-            let output = try await runCommand(["exec", host.id, "ls", "-lA", full])
-            return (CLIParsers.parseDirectoryListing(output), .runningContainer(host.name))
+            return .exec(container: host.id, mountPoint: mount.destination)
         }
-        // Referenced by stopped containers only: the CLI won't let another
-        // container mount it, so there is no way to read it right now.
         let stoppedUsers = containers(usingVolume: volume.name)
         if !stoppedUsers.isEmpty {
             let names = stoppedUsers.map(\.name).joined(separator: ", ")
             throw NSError(domain: "iContainer", code: 4, userInfo: [NSLocalizedDescriptionKey:
                 "The volume is attached to the stopped container \(names). Start it to browse the contents."])
         }
-        let image = Self.helperImage(from: images)
-        let full = relative.isEmpty ? "/__vol" : "/__vol/" + relative
-        do {
-            let output = try await runCommand(["run", "--rm", "-v", "\(volume.name):/__vol:ro", image, "ls", "-lA", full])
-            return (CLIParsers.parseDirectoryListing(output), .helperContainer(image: image))
-        } catch {
-            // Surface the `ls` error line, not the CLI's progress spam.
-            let message = error.localizedDescription
-                .split(whereSeparator: \.isNewline)
-                .map(String.init)
-                .last { $0.contains("ls:") || $0.lowercased().contains("error") } ?? message(from: error)
-            throw NSError(domain: "iContainer", code: 3, userInfo: [NSLocalizedDescriptionKey: message])
-        }
+        return .helper(volume: volume.name, image: Self.helperImage(from: images))
     }
 
     private func message(from error: Error) -> String { error.localizedDescription }
