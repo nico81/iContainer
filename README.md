@@ -9,7 +9,7 @@
 ![Vibe-coded with Claude Code](https://img.shields.io/badge/vibe--coded%20with-Claude%20Code-8A2BE2)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?logo=buymeacoffee&logoColor=black)](https://www.buymeacoffee.com/nicoemanuelli)
 
-A native macOS app to manage [Apple Container](https://github.com/apple/container) workloads — containers, images, logs, stats, and an interactive shell — built with SwiftUI on top of the official `container` CLI.
+A native macOS app to manage [Apple Container](https://github.com/apple/container) workloads — containers, images, logs, stats, and a full terminal — built with SwiftUI on top of the official `container` CLI.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/home-dark.png">
@@ -22,11 +22,11 @@ A native macOS app to manage [Apple Container](https://github.com/apple/containe
 - **AI log analysis, on-device** 🧠 — one **Explain** click on any container's or machine's Logs tab turns raw output into a concise diagnostic: a health summary, the errors/warnings it found (quoted), the likely cause, and concrete next steps — streamed live. Powered by Apple's **Foundation Models**, so the model runs **entirely on your Mac**: your logs (with their secrets, tokens and connection strings) **never leave the device** — no cloud, no API keys, **no subscription**. Requires Apple Intelligence on a supported Mac.
 - **Dashboard** — container, machine, and image counts at a glance, quick actions (create container/machine, pull image), and a two-column overview of available containers and machines.
 - **Container lifecycle** — create (from an image or a Dockerfile build), start, stop, restart, edit settings (ports, volumes, environment), delete. Editing recreates the container with the new configuration.
-- **Container machines** — manage the Linux VMs that host containers (WWDC 2026): create, start/stop, edit (CPUs, memory, home mount), delete, with Info / Shell / Logs tabs per machine.
+- **Container machines** — manage the Linux VMs that host containers (WWDC 2026): create, start/stop, edit (CPUs, memory, home mount), delete, with Info / Shell / Logs tabs per machine. The Shell tab is a full terminal on the machine's login shell (`vim`, `htop`, colors, Ctrl-C, resizing), optionally as root.
 - **Sidebar** — reorderable Containers / Machines / Images sections (order, expand state, and filters persist), running/stopped sorting, search, and status filters; live status indicators.
-- **Per-container detail tabs** — Info (network, mounts, DNS, env, exposed-port browser links), Stats with charts, persistent Shell session, Logs with follow mode.
+- **Per-container detail tabs** — Info (network, mounts, DNS, env, exposed-port browser links), Stats with charts, a full terminal (`container exec -t`, powered by [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm)) that stays alive across tab switches and can be handed off to Terminal.app, Logs with follow mode.
 - **Images** — list, pull, inspect, delete; registry login with guided error handling for auth failures.
-- **Networks & Volumes** — sidebar sections for the service's networks (subnet, attached containers) and volumes (capacity, mounting containers, backing file), with create, delete (blocked while in use, with the reason) and prune.
+- **Networks & Volumes** — sidebar sections for the service's networks (subnet, attached containers) and volumes (capacity, mounting containers, backing file), with create, delete (blocked while in use, with the reason) and prune. Each volume's contents can be browsed, and files copied in (Finder drag & drop) and out, previewed, or deleted.
 - **Apple container service** — start/stop the system service; view CLI vs service version, host info, paths, storage (`container system df`), the service defaults (`config.toml`), service-wide stats, and live system logs.
 - **Docker interop** 🐳 — import images from a local Docker installation (`docker save` → `container image load`, no registry round-trip) and **create a container from an existing Docker container**: iContainer reads its `docker inspect` configuration, translates ports, mounts, environment, entrypoint/command, user, resources and network for Apple Container, and lists anything that has no equivalent before you confirm. Docker is never modified.
 - **Docker Compose (MVP)** — open a `compose.yaml` / `docker-compose.yml`, review the services it can run and the directives it can't map, then *Up* / *Down* the project on a shared per-project network in `depends_on` order.
@@ -106,7 +106,7 @@ cd iContainer
 open iContainer.xcodeproj
 ```
 
-Then build and run the `iContainer` scheme in Xcode. You will need to set your own development team in Signing & Capabilities. From the command line:
+Then build and run the `iContainer` scheme in Xcode. You will need to set your own development team in Signing & Capabilities. On the first build Xcode asks you to **Trust & Enable** SwiftTerm's build plugin (`SwiftTermBuildInfoPlugin`, which only stamps SwiftTerm's version info); command-line builds work once it's trusted. From the command line:
 
 ```sh
 xcodebuild -project iContainer.xcodeproj -scheme iContainer -configuration Debug build
@@ -138,6 +138,12 @@ issues very welcome.
 If it saves you some clicks, you can
 [buy me a coffee](https://www.buymeacoffee.com/nicoemanuelli) ☕ — entirely
 optional, always appreciated.
+
+## Acknowledgments
+
+- [Sparkle](https://sparkle-project.org) — app updates (MIT)
+- [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) by Miguel de Icaza — the terminal emulator behind the Shell tabs (MIT)
+- [Containerization](https://github.com/apple/containerization) — Apple's Swift packages for containers (Apache 2.0)
 
 ## License
 

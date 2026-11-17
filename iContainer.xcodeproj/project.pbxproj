@@ -13,6 +13,7 @@
 		03D40FC32F5F0C75006C576F /* ContainerImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03D40FC22F5F0C75006C576F /* ContainerImage.swift */; };
 		03D40FC52F5F0DBD006C576F /* ImagesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03D40FC42F5F0DBD006C576F /* ImagesView.swift */; };
 		5AFEED0000000000000000A3 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 5AFEED0000000000000000A2 /* Sparkle */; };
+		5AFEED0000000000000000B3 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 5AFEED0000000000000000B2 /* SwiftTerm */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -54,6 +55,7 @@
 				0363BE932E21BB0200FE2CE1 /* ContainerizationOCI in Frameworks */,
 				0363BE992E21BB0200FE2CE1 /* ContainerizationIO in Frameworks */,
 				5AFEED0000000000000000A3 /* Sparkle in Frameworks */,
+				5AFEED0000000000000000B3 /* SwiftTerm in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -111,6 +113,7 @@
 				0363BE922E21BB0200FE2CE1 /* ContainerizationOCI */,
 				0363BE982E21BB0200FE2CE1 /* ContainerizationIO */,
 				5AFEED0000000000000000A2 /* Sparkle */,
+				5AFEED0000000000000000B2 /* SwiftTerm */,
 			);
 			productName = iContainer;
 			productReference = 0363BE812E21BAAF00FE2CE1 /* iContainer.app */;
@@ -170,6 +173,7 @@
 			packageReferences = (
 				0363BE8F2E21BB0200FE2CE1 /* XCRemoteSwiftPackageReference "containerization" */,
 				5AFEED0000000000000000A1 /* XCRemoteSwiftPackageReference "Sparkle" */,
+				5AFEED0000000000000000B1 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 0363BE822E21BAAF00FE2CE1 /* Products */;
@@ -510,6 +514,14 @@
 				minimumVersion = 2.6.0;
 			};
 		};
+		5AFEED0000000000000000B1 /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 1.99.3;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -532,6 +544,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 5AFEED0000000000000000A1 /* XCRemoteSwiftPackageReference "Sparkle" */;
 			productName = Sparkle;
+		};
+		5AFEED0000000000000000B2 /* SwiftTerm */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5AFEED0000000000000000B1 /* XCRemoteSwiftPackageReference "SwiftTerm" */;
+			productName = SwiftTerm;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

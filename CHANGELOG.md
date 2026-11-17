@@ -8,6 +8,19 @@ The format follows Keep a Changelog, and versions use semantic versioning:
 ## [Unreleased]
 
 ### Added
+- **A real terminal for containers and machines.** The *Shell* tabs are now
+  full terminal emulators ([SwiftTerm](https://github.com/migueldeicaza/SwiftTerm))
+  running `container exec -t -i` / `container machine run -t -i` in a
+  pseudo-terminal: full-screen programs (`vim`, `nano`, `htop`, `less`),
+  Tab completion, history, colors, mouse, Ctrl-C and window resizing all
+  work. Sessions survive tab switches and leaving the detail view; the
+  header shows the connection state with *Restart* and *Open in Terminal*
+  (the same session in Terminal.app). Containers use your preferred shell
+  from Settings and fall back to `/bin/sh`; machines open their login shell
+  as your Mac user, or as root with *Run as root*. A stopped machine waits
+  for *Boot Machine & Open Terminal* instead of booting on its own; a
+  stopped container offers *Start Container*. Uses the terminal font and
+  colors from Settings. Replaces the previous line-based shell.
 - **Copy files between the Mac and a volume.** The volume browser (volume
   page *Contents* tab and container *Volumes* tab) becomes a small file
   manager: *Add Files…* or drop files and folders from the Finder (onto the

@@ -94,7 +94,7 @@ nonisolated enum RefreshIntervalOption: Double, CaseIterable, Identifiable {
 @MainActor
 final class SettingsManager: ObservableObject {
     /// Shared instance used by code paths that can't easily receive it via
-    /// `@EnvironmentObject` (notably the cached `ContainerShellSession`).
+    /// `@EnvironmentObject` (notably the cached `TerminalSession`).
     static let shared = SettingsManager()
 
     // UserDefaults keys and built-in defaults are exposed at the type
@@ -361,7 +361,7 @@ final class SettingsManager: ObservableObject {
 extension SettingsManager {
     // The two helpers below are called from `Process`-spawning code
     // (`ContainerizationWrapper.runCommandBlocking`, `ServiceManager`'s
-    // background tasks, `ContainerShellSession.startIfNeeded`) which run
+    // background tasks, `TerminalSession.start`) which run
     // off the main actor. The keys and shell paths are duplicated here
     // as literals so we don't reach into MainActor-isolated state —
     // they must stay in sync with `Keys` / `ShellPreference`.

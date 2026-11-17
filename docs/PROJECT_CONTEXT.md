@@ -189,6 +189,12 @@ iContainer is a macOS SwiftUI app that manages Apple Container workloads through
   cluster (+ `--nodes`, has `--format json`), lifecycle commands skip nodes.
   Still broken: `container cp` ignores volume mounts (writes/reads the
   rootfs under the mount point) — use tar over `exec` for volumes.
+- Terminals (`TerminalSession.swift`, 2.7): SwiftTerm 1.99.x
+  `LocalProcessTerminalView` runs the `container` CLI in a pty —
+  `exec -t -i -e TERM=xterm-256color <id> /bin/sh -c '<preferred shell or sh>'`
+  and `machine run -n <id> -t -i [--root]`. Sessions + views cached by key
+  (`container:<id>`, `machine:<id>`) and re-parented by `TerminalHostView`.
+  SwiftTerm's build plugin must be trusted once in Xcode (Trust & Enable).
 - Volume file copies (`VolumeFileTransfer.swift`, 2.7): tar streamed through
   `container exec -i` (running container mounting the volume) or `container
   run --rm -i -v vol:/__vol` (unused volume; read-only mount for reads).

@@ -1,229 +1,63 @@
 import SwiftUI
-import Combine
 
-/// "Run" tab of the machine detail view.
-///
-/// Maintains a persistent interactive `container machine run -n <id> -i`
-/// session, mirroring `ContainerShellSession`. Per the docs, `machine run`
-/// boots the machine if it is stopped, so opening this tab also starts the
-/// machine (subject to the one-machine-at-a-time limit).
-
-// MARK: - Session
-
-final class MachineShellSession: ObservableObject {
-    @Published var output: String = ""
-    @Published var isRunning: Bool = false
-    @Published var lastError: String?
-
-    private let machineId: String
-    private var process: Process?
-    private var inputPipe: Pipe?
-    private var outputPipe: Pipe?
-
-    private static var cache: [String: MachineShellSession] = [:]
-
-    static func shared(for machineId: String) -> MachineShellSession {
-        if let existing = cache[machineId] {
-            return existing
-        }
-        let created = MachineShellSession(machineId: machineId)
-        cache[machineId] = created
-        return created
-    }
-
-    private init(machineId: String) {
-        self.machineId = machineId
-    }
-
-    func startIfNeeded() {
-        guard !isRunning else { return }
-        guard let cliPath = resolveContainerCLIPath() else {
-            lastError = "CLI tool 'container' not found."
-            return
-        }
-
-        let preferredShell = SettingsManager.storedShellContainerPath()
-        var shellPaths = [preferredShell]
-        if preferredShell != "/bin/sh" {
-            shellPaths.append("/bin/sh")
-        }
-
-        // Try a specific shell first, then fall back to the machine's login
-        // shell (no executable argument).
-        var candidates: [[String]] = shellPaths.map { shell in
-            ["machine", "run", "-n", machineId, "-i", shell]
-        }
-        candidates.append(["machine", "run", "-n", machineId, "-i"])
-
-        for args in candidates {
-            if startProcess(cliPath: cliPath, arguments: args) {
-                return
-            }
-        }
-
-        lastError = "Unable to start the machine run session."
-    }
-
-    func stop() {
-        outputPipe?.fileHandleForReading.readabilityHandler = nil
-        process?.terminate()
-        process = nil
-        inputPipe = nil
-        outputPipe = nil
-        isRunning = false
-    }
-
-    func send(_ command: String) {
-        let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        if !isRunning {
-            startIfNeeded()
-        }
-        guard let data = (trimmed + "\n").data(using: .utf8) else { return }
-        inputPipe?.fileHandleForWriting.write(data)
-    }
-
-    func clear() {
-        output = ""
-    }
-
-    private func startProcess(cliPath: String, arguments: [String]) -> Bool {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: cliPath)
-        process.arguments = arguments
-
-        let input = Pipe()
-        let output = Pipe()
-        process.standardInput = input
-        process.standardOutput = output
-        process.standardError = output
-
-        output.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            // Empty data signals EOF — the `machine run` process closed its
-            // output (it exited, or the machine was stopped). Remove the
-            // handler now: otherwise the file handle stays "readable" at EOF
-            // and the fd-monitoring queue re-invokes this block in a tight
-            // loop, pinning a CPU core at 100% for the rest of the app's life.
-            guard !data.isEmpty else {
-                handle.readabilityHandler = nil
-                return
-            }
-            guard let chunk = String(data: data, encoding: .utf8) else { return }
-            DispatchQueue.main.async {
-                self?.output.append(contentsOf: chunk)
-            }
-        }
-
-        process.terminationHandler = { [weak self] _ in
-            // Belt-and-suspenders: also tear down the reader when the process
-            // ends, in case termination is observed before the EOF read.
-            output.fileHandleForReading.readabilityHandler = nil
-            DispatchQueue.main.async {
-                self?.isRunning = false
-                if self?.output.isEmpty == true {
-                    self?.lastError = "Run session ended without output."
-                }
-            }
-        }
-
-        do {
-            try process.run()
-            self.process = process
-            self.inputPipe = input
-            self.outputPipe = output
-            self.lastError = nil
-            self.isRunning = true
-            if self.output.isEmpty {
-                self.output = "[machine run started]\n"
-            } else {
-                self.output.append("\n[machine run restarted]\n")
-            }
-            return true
-        } catch {
-            output.fileHandleForReading.readabilityHandler = nil
-            return false
-        }
-    }
-
-    private func resolveContainerCLIPath() -> String? {
-        SettingsManager.resolvedContainerCLIPath()
-    }
-}
-
-// MARK: - View
-
+/// "Shell" tab of the machine detail view: a full terminal on the machine's
+/// login shell (`container machine run -t -i`), kept alive across tab
+/// switches by the cached `TerminalSession`. `machine run` boots a stopped
+/// machine, so a stopped machine waits for an explicit click (only one
+/// machine runs at a time).
 struct MachineShellView: View {
     let machineId: String
-    @StateObject private var session: MachineShellSession
-    @State private var command: String = ""
-    @State private var autoScroll = true
+    @EnvironmentObject var containerManager: ContainerizationWrapper
+    @StateObject private var session: TerminalSession
+    @AppStorage("machineShell.runAsRoot") private var runAsRoot = false
 
     init(machineId: String) {
         self.machineId = machineId
-        _session = StateObject(wrappedValue: MachineShellSession.shared(for: machineId))
+        _session = StateObject(wrappedValue: TerminalSession.shared(key: "machine:\(machineId)"))
+    }
+
+    private var isMachineRunning: Bool {
+        containerManager.machines.first { $0.id == machineId }?.status == .running
+    }
+
+    private func shellArguments() -> [String] {
+        TerminalCommands.machineShell(machineId: machineId, asRoot: runAsRoot)
     }
 
     var body: some View {
         GeometryReader { proxy in
-            let shellHeight = max(280, proxy.size.height - 240)
             VStack(alignment: .leading, spacing: 16) {
                 MachineHeaderView(machineId: machineId)
-                DetailSection(title: "Shell", icon: "terminal") {
-                    VStack(spacing: 12) {
-                        HStack(spacing: 12) {
-                            Toggle("Auto Scroll", isOn: $autoScroll)
-                                .toggleStyle(.switch)
-                            Spacer()
-                            Button("Clear") { session.clear() }
+                DetailSection(title: "Terminal", icon: "terminal") {
+                    if isMachineRunning || session.isRunning || session.state != .idle {
+                        TerminalPanel(
+                            session: session,
+                            startArguments: shellArguments,
+                            accessory: AnyView(
+                                Toggle("Run as root", isOn: $runAsRoot)
+                                    .toggleStyle(.checkbox)
+                                    .help("Applies to the next session (Restart). By default you log in as your Mac user.")
+                            )
+                        )
+                        .frame(height: max(320, proxy.size.height - 180))
+                    } else {
+                        VStack(spacing: 12) {
+                            Image(systemName: "terminal").font(.largeTitle).foregroundColor(.secondary)
+                            Text("The machine is stopped. Opening a terminal boots it — only one machine runs at a time.")
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                            Toggle("Run as root", isOn: $runAsRoot).toggleStyle(.checkbox)
+                            Button("Boot Machine & Open Terminal") { session.start(arguments: shellArguments()) }
+                                .buttonStyle(.borderedProminent)
                         }
-
-                        ScrollViewReader { scrollProxy in
-                            let s = SettingsManager.shared
-                            ScrollView {
-                                Text(session.output.isEmpty ? "Run output will appear here." : session.output)
-                                    .font(.custom(s.terminalFontName, size: s.terminalFontSize, relativeTo: .body).monospaced())
-                                    .foregroundColor(s.forceBlackTerminal ? .white : nil)
-                                    .textSelection(.enabled)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(s.forceBlackTerminal ? 8 : 0)
-                                Color.clear.frame(height: 1).id("MACHINE_RUN_BOTTOM")
-                            }
-                            .frame(height: shellHeight)
-                            .background(s.forceBlackTerminal ? Color.black : Color.clear)
-                            .clipShape(RoundedRectangle(cornerRadius: s.forceBlackTerminal ? AppRadius.small : 0))
-                            .onChange(of: session.output) { _, _ in
-                                guard autoScroll else { return }
-                                withAnimation(.easeOut(duration: 0.15)) {
-                                    scrollProxy.scrollTo("MACHINE_RUN_BOTTOM", anchor: .bottom)
-                                }
-                            }
-                        }
-
-                        HStack(spacing: 12) {
-                            TextField("Command", text: $command)
-                                .textFieldStyle(.roundedBorder)
-                                .onSubmit { sendCommand() }
-                            Button("Send") { sendCommand() }
-                                .disabled(command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        }
+                        .frame(maxWidth: .infinity, minHeight: 220)
                     }
-                }
-
-                if let error = session.lastError, !error.isEmpty {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
                 }
             }
             .padding()
         }
-        .onAppear { session.startIfNeeded() }
-    }
-
-    private func sendCommand() {
-        let toSend = command
-        command = ""
-        session.send(toSend)
+        .onAppear {
+            if isMachineRunning, session.state == .idle { session.start(arguments: shellArguments()) }
+        }
     }
 }
