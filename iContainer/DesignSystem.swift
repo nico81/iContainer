@@ -127,3 +127,74 @@ struct StatusDot: View {
             .shadow(color: Color.black.opacity(0.15), radius: 1, x: 0, y: 0)
     }
 }
+
+/// Bottom bar shared by the app's sheets, in the macOS order used by the
+/// container CLI sheets: an optional note, a hairline, then secondary
+/// actions on the leading edge and Close + the primary (default) action on
+/// the trailing edge. `note` is parsed as Markdown, so `code` spans render.
+struct SheetActionBar<Secondary: View>: View {
+    var note: String? = nil
+    let primaryTitle: String
+    var primaryDisabled = false
+    var isWorking = false
+    var closeTitle = "Close"
+    var closeDisabled = false
+    let onPrimary: () -> Void
+    let onClose: () -> Void
+    @ViewBuilder var secondary: () -> Secondary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let note {
+                Text(LocalizedStringKey(note))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Divider()
+            HStack(spacing: 10) {
+                secondary()
+                Spacer()
+                if isWorking { ProgressView().controlSize(.small) }
+                Button(closeTitle, action: onClose)
+                    .keyboardShortcut(.cancelAction)
+                    .disabled(closeDisabled)
+                Button(primaryTitle, action: onPrimary)
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(primaryDisabled)
+            }
+            .controlSize(.large)
+        }
+    }
+}
+
+extension SheetActionBar where Secondary == EmptyView {
+    init(note: String? = nil, primaryTitle: String, primaryDisabled: Bool = false, isWorking: Bool = false,
+         closeTitle: String = "Close", closeDisabled: Bool = false,
+         onPrimary: @escaping () -> Void, onClose: @escaping () -> Void) {
+        self.init(note: note, primaryTitle: primaryTitle, primaryDisabled: primaryDisabled, isWorking: isWorking,
+                  closeTitle: closeTitle, closeDisabled: closeDisabled, onPrimary: onPrimary, onClose: onClose,
+                  secondary: { EmptyView() })
+    }
+}
+
+/// A sheet whose form scrolls while the action bar stays pinned at the
+/// bottom, so Create/Close never scroll away or float mid-sheet.
+struct ScrollingSheet<Content: View, Footer: View>: View {
+    @ViewBuilder var content: () -> Content
+    @ViewBuilder var footer: () -> Footer
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                content()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+            }
+            footer()
+                .padding(.horizontal)
+                .padding(.bottom)
+        }
+    }
+}

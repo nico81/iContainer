@@ -154,6 +154,11 @@ struct ContainerInfoView: View {
                                     if !dns.options.isEmpty {
                                         DetailRow(label: "Options", value: dns.options.joined(separator: ", "))
                                     }
+                                    if dns.domain == nil, dns.nameservers.isEmpty, dns.searchDomains.isEmpty, dns.options.isEmpty {
+                                        Text("Uses the container service's DNS defaults.")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
                                 }
                             }
                         }

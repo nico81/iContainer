@@ -291,7 +291,8 @@ struct NetworkDetailView: View {
                     .padding(.top, 50)
             }
         }
-        .navigationTitle(networkName)
+        // The large in-content title already names the network.
+        .navigationTitle("")
         .confirmationDialog("Delete Network?", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
                 Task { await containerManager.deleteNetwork(name: networkName) }
@@ -611,16 +612,15 @@ struct CreateNetworkSheet: View {
             if let errorMessage {
                 Text(errorMessage).font(.caption).foregroundColor(.red).textSelection(.enabled)
             }
-            HStack {
-                Button("Create") { create() }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!isNameValid || nameTaken || isCreating)
-                if isCreating { ProgressView().scaleEffect(0.8) }
-                Spacer()
-                Button("Close") { onClose() }
-            }
-            Text("Creates a NAT network with its own subnet (`container network create`). Attach containers to it with the Network option when creating them.")
-                .font(.caption2).foregroundColor(.secondary)
+            SheetActionBar(
+                note: "Creates a NAT network with its own subnet (`container network create`). Attach containers to it with the Network option when creating them.",
+                primaryTitle: "Create",
+                primaryDisabled: !isNameValid || nameTaken || isCreating,
+                isWorking: isCreating,
+                onPrimary: create,
+                onClose: onClose
+            )
+            .padding(.top, 4)
         }
         .padding()
         .frame(minWidth: 460, minHeight: 200)
@@ -680,16 +680,15 @@ struct CreateVolumeSheet: View {
             if let errorMessage {
                 Text(errorMessage).font(.caption).foregroundColor(.red).textSelection(.enabled)
             }
-            HStack {
-                Button("Create") { create() }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!isNameValid || nameTaken || !isSizeValid || isCreating)
-                if isCreating { ProgressView().scaleEffect(0.8) }
-                Spacer()
-                Button("Close") { onClose() }
-            }
-            Text("Creates a named volume (`container volume create`) backed by a sparse ext4 image; capacity is the maximum it can grow to. Mount it in a container as `<name>:/path`.")
-                .font(.caption2).foregroundColor(.secondary)
+            SheetActionBar(
+                note: "Creates a named volume (`container volume create`) backed by a sparse ext4 image; capacity is the maximum it can grow to. Mount it in a container as `<name>:/path`.",
+                primaryTitle: "Create",
+                primaryDisabled: !isNameValid || nameTaken || !isSizeValid || isCreating,
+                isWorking: isCreating,
+                onPrimary: create,
+                onClose: onClose
+            )
+            .padding(.top, 4)
         }
         .padding()
         .frame(minWidth: 460, minHeight: 240)

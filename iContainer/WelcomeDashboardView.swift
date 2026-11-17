@@ -314,9 +314,12 @@ private struct WelcomeMetricTile: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            // Fixed height: symbols differ in height (square.stack.3d.up is
+            // taller), which otherwise shifts one tile out of line.
             Image(systemName: systemImage)
                 .font(.title3)
                 .foregroundColor(.secondary)
+                .frame(height: 22)
             Text("\(value)")
                 .font(.title2.monospacedDigit().weight(.semibold))
             Text(title)

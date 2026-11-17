@@ -55,21 +55,15 @@ struct DockerImportSheet: View {
 
             statusBox
 
-            HStack {
-                Button(importButtonTitle) { requestImport() }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(selectedImage == nil || isBusy || !dockerManager.availability.isAvailable)
-                if isBusy {
-                    ProgressView().scaleEffect(0.8)
-                }
-                Spacer()
-                Button("Close") { onClose() }
-                    .disabled(isBusy)
-            }
-
-            Text("Images are exported with `docker save` (linux/arm64 when available) and loaded with `container image load`. If the same reference already exists in Apple Container, its tag is moved to the imported image.")
-                .font(.caption2)
-                .foregroundColor(.secondary)
+            SheetActionBar(
+                note: "Images are exported with `docker save` (linux/arm64 when available) and loaded with `container image load`. If the same reference already exists in Apple Container, its tag is moved to the imported image.",
+                primaryTitle: importButtonTitle,
+                primaryDisabled: selectedImage == nil || isBusy || !dockerManager.availability.isAvailable,
+                isWorking: isBusy,
+                closeDisabled: isBusy,
+                onPrimary: requestImport,
+                onClose: onClose
+            )
         }
         .padding()
         .frame(minWidth: 600, idealWidth: 680, maxWidth: .infinity, minHeight: 460, idealHeight: 560, maxHeight: .infinity)

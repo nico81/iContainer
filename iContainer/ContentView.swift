@@ -1141,7 +1141,7 @@ struct ContentView: View {
     }
 
     private var createContainerSheet: some View {
-        ScrollView {
+        ScrollingSheet {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Create Container")
                     .font(.headline)
@@ -1246,32 +1246,20 @@ struct ContentView: View {
                     .padding(.top, 8)
                 }
 
-                HStack {
-                    Button(createActionTitle) {
-                        runCreateContainer()
-                    }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!canCreateContainer || isCreatingContainer)
-
-                    if isCreatingContainer {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                    }
-
-                    Spacer()
-
-                    Button("Close") {
-                        createErrorMessage = nil
-                        containerManager.lastErrorMessage = nil
-                        showingCreateContainerSheet = false
-                    }
-                }
-
-                Text("Image references can be local or remote. Remote images are fetched by the container CLI when needed.")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
             }
-            .padding()
+        } footer: {
+            SheetActionBar(
+                note: "Image references can be local or remote. Remote images are fetched by the container CLI when needed.",
+                primaryTitle: createActionTitle,
+                primaryDisabled: !canCreateContainer || isCreatingContainer,
+                isWorking: isCreatingContainer,
+                onPrimary: runCreateContainer,
+                onClose: {
+                    createErrorMessage = nil
+                    containerManager.lastErrorMessage = nil
+                    showingCreateContainerSheet = false
+                }
+            )
         }
         .frame(minWidth: 720, idealWidth: 920, maxWidth: .infinity, minHeight: 560, idealHeight: 720, maxHeight: .infinity)
         .background(WindowResizeConfigurator(minSize: CGSize(width: 720, height: 560), shouldCenter: showingCreateContainerSheet))
@@ -1413,7 +1401,7 @@ struct ContentView: View {
     }
 
     private var editContainerSheet: some View {
-        ScrollView {
+        ScrollingSheet {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Edit Container Settings")
                     .font(.headline)
@@ -1469,30 +1457,16 @@ struct ContentView: View {
                     removeAction: removeEditEnvVariable
                 )
 
-                HStack {
-                    Button("Save") {
-                        runSaveContainerEdit()
-                    }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(isLoadingContainerEditSettings || isSavingContainerEdit || editImage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                    if isLoadingContainerEditSettings || isSavingContainerEdit {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                    }
-
-                    Spacer()
-
-                    Button("Close") {
-                        showingEditContainerSheet = false
-                    }
-                }
-
-                Text("Applying settings recreates the container with the new configuration. Files written inside the container (anything not on a volume or bind mount) are lost — the container CLI does not create volumes for an image's VOLUME directives.")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
             }
-            .padding()
+        } footer: {
+            SheetActionBar(
+                note: "Applying settings recreates the container with the new configuration. Files written inside the container (anything not on a volume or bind mount) are lost — the container CLI does not create volumes for an image's VOLUME directives.",
+                primaryTitle: "Save",
+                primaryDisabled: isLoadingContainerEditSettings || isSavingContainerEdit || editImage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                isWorking: isLoadingContainerEditSettings || isSavingContainerEdit,
+                onPrimary: runSaveContainerEdit,
+                onClose: { showingEditContainerSheet = false }
+            )
         }
         .frame(minWidth: 720, idealWidth: 920, maxWidth: .infinity, minHeight: 560, idealHeight: 720, maxHeight: .infinity)
         .background(WindowResizeConfigurator(minSize: CGSize(width: 720, height: 560), shouldCenter: showingEditContainerSheet))
@@ -1510,28 +1484,15 @@ struct ContentView: View {
             SecureField("Password or token", text: $registryPassword)
                 .textFieldStyle(.roundedBorder)
 
-            HStack {
-                Button("Login") {
-                    runRegistryLogin()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(isLoggingInRegistry || registryHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || registryUsername.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || registryPassword.isEmpty)
-
-                if isLoggingInRegistry {
-                    ProgressView()
-                        .scaleEffect(0.8)
-                }
-
-                Spacer()
-
-                Button("Close") {
-                    showingRegistryLoginSheet = false
-                }
-            }
-
-            Text("For Docker Hub use host `registry-1.docker.io` and a Personal Access Token.")
-                .font(.caption2)
-                .foregroundColor(.secondary)
+            SheetActionBar(
+                note: "For Docker Hub use host `registry-1.docker.io` and a Personal Access Token.",
+                primaryTitle: "Login",
+                primaryDisabled: isLoggingInRegistry || registryHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || registryUsername.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || registryPassword.isEmpty,
+                isWorking: isLoggingInRegistry,
+                onPrimary: runRegistryLogin,
+                onClose: { showingRegistryLoginSheet = false }
+            )
+            .padding(.top, 4)
         }
         .padding()
         .frame(minWidth: 500, minHeight: 260)

@@ -35,6 +35,21 @@ The format follows Keep a Changelog, and versions use semantic versioning:
   extended attributes) is left behind. Multi-selection with ⌘-click and
   ⇧-click, plus a context menu on every row.
 
+### Changed
+- **Sheets follow the macOS layout.** Create Container, Edit Container,
+  Registry Login, Compose, Import from Docker, Create/Edit Machine and
+  New Network/Volume now end with a note, a divider and the buttons on the
+  bottom-right (*Close*, then the primary action as the default button),
+  like the container CLI sheets. In the scrolling sheets the buttons stay
+  pinned at the bottom instead of scrolling away.
+
+### Fixed
+- The Images tile on the welcome dashboard sat a few points out of line
+  with the other tiles.
+- A container's DNS card was empty when it uses the service defaults; it
+  now says so.
+- The network page repeated its name in the toolbar above the large title.
+
 ### Notes
 - Verified with Apple `container` CLI **1.7.1** (installed with the in-app
   updater): containers, images, machines, networks, volumes, service

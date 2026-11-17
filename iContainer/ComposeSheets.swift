@@ -21,7 +21,7 @@ struct ComposeSheet: View {
     }
 
     var body: some View {
-        ScrollView {
+        ScrollingSheet {
             VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Compose Project: \(projectName)")
@@ -53,28 +53,19 @@ struct ComposeSheet: View {
                         .textSelection(.enabled)
                 }
 
-                HStack {
-                    Button("Up") { runUp() }
-                        .keyboardShortcut(.defaultAction)
-                        .disabled(isRunning || parsed.services.isEmpty)
-
-                    Button("Down") { runDown() }
-                        .disabled(isRunning)
-
-                    if isRunning {
-                        ProgressView().scaleEffect(0.8)
-                    }
-
-                    Spacer()
-
-                    Button("Close") { onClose() }
-                }
-
-                Text("Containers are named \"\(projectName)-<service>\" (unless a service sets container_name) and share a single per-project network. Directives the container CLI can't map are ignored, not fatal.")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
             }
-            .padding()
+        } footer: {
+            SheetActionBar(
+                note: "Containers are named \"\(projectName)-<service>\" (unless a service sets container_name) and share a single per-project network. Directives the container CLI can't map are ignored, not fatal.",
+                primaryTitle: "Up",
+                primaryDisabled: isRunning || parsed.services.isEmpty,
+                isWorking: isRunning,
+                onPrimary: runUp,
+                onClose: onClose
+            ) {
+                Button("Down", action: runDown)
+                    .disabled(isRunning)
+            }
         }
         .frame(minWidth: 560, idealWidth: 640, maxWidth: .infinity, minHeight: 420, idealHeight: 560, maxHeight: .infinity)
     }

@@ -71,18 +71,15 @@ struct CreateMachineSheet: View {
                     .textSelection(.enabled)
             }
 
-            HStack {
-                Button("Create") { runCreate() }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(isCreating || image.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !isNameValid)
-                if isCreating { ProgressView().scaleEffect(0.8) }
-                Spacer()
-                Button("Close") { onClose() }
-            }
-
-            Text("Creating boots the machine unless turned off; downloads the image if needed.")
-                .font(.caption2)
-                .foregroundColor(.secondary)
+            SheetActionBar(
+                note: "Creating boots the machine unless turned off; downloads the image if needed.",
+                primaryTitle: "Create",
+                primaryDisabled: isCreating || image.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !isNameValid,
+                isWorking: isCreating,
+                onPrimary: runCreate,
+                onClose: onClose
+            )
+            .padding(.top, 4)
         }
         .padding()
         .frame(minWidth: 520, minHeight: 320)
@@ -165,22 +162,21 @@ struct EditMachineConfigSheet: View {
                 .foregroundColor(.green)
             }
 
-            HStack {
-                Button("Save") { runSave() }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(isSaving || isRestarting)
-                if isSaving || isRestarting { ProgressView().scaleEffect(0.8) }
-                Spacer()
+            SheetActionBar(
+                note: "Changes take effect after the machine is restarted.",
+                primaryTitle: "Save",
+                primaryDisabled: isSaving || isRestarting,
+                isWorking: isSaving || isRestarting,
+                closeTitle: saved ? "Done" : "Close",
+                onPrimary: runSave,
+                onClose: { dismiss() }
+            ) {
                 if saved && isRunning {
-                    Button("Restart now") { runRestart() }
+                    Button("Restart Now", action: runRestart)
                         .disabled(isRestarting)
                 }
-                Button(saved ? "Done" : "Close") { dismiss() }
             }
-
-            Text("Changes take effect after the machine is restarted.")
-                .font(.caption2)
-                .foregroundColor(.secondary)
+            .padding(.top, 4)
         }
         .padding()
         .frame(minWidth: 480, minHeight: 240)
