@@ -229,6 +229,10 @@ struct TerminalPanel: View {
                     .background(settings.forceBlackTerminal ? Color.black : Color(NSColor.textBackgroundColor))
                     .clipShape(RoundedRectangle(cornerRadius: AppRadius.small))
                     .overlay(RoundedRectangle(cornerRadius: AppRadius.small).stroke(Color.hairline))
+                    // A finished session stays readable but must not look live.
+                    .opacity(session.isRunning || session.state == .idle ? 1 : 0.4)
+                    .allowsHitTesting(session.isRunning)
+                    .animation(.easeOut(duration: 0.2), value: session.state)
                 endedOverlay
             }
         }

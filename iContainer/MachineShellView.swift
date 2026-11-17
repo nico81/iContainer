@@ -29,7 +29,9 @@ struct MachineShellView: View {
             VStack(alignment: .leading, spacing: 16) {
                 MachineHeaderView(machineId: machineId)
                 DetailSection(title: "Terminal", icon: "terminal") {
-                    if isMachineRunning || session.isRunning || session.state != .idle {
+                    // Same rule as containers: a stopped machine shows the boot
+                    // prompt, not the dead terminal of its last session.
+                    if isMachineRunning || session.isRunning {
                         TerminalPanel(
                             session: session,
                             startArguments: shellArguments,
