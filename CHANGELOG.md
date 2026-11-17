@@ -36,6 +36,10 @@ The format follows Keep a Changelog, and versions use semantic versioning:
   ⇧-click, plus a context menu on every row.
 
 ### Changed
+- **Action buttons on the container page.** The container *Info* tab gets
+  the same row as machines under the title: *Start* (or *Stop* and
+  *Restart* when running), *Edit Configuration* and *Delete*, with the
+  stop/delete confirmations from Settings.
 - **Sheets follow the macOS layout.** Create Container, Edit Container,
   Registry Login, Compose, Import from Docker, Create/Edit Machine and
   New Network/Volume now end with a note, a divider and the buttons on the

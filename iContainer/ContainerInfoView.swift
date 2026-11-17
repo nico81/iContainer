@@ -27,6 +27,8 @@ struct ContainerInfoView: View {
                 VStack(alignment: .leading, spacing: 24) {
                     ContainerHeaderView(details: details)
 
+                    ContainerActionsRow(containerId: details.configuration?.id ?? details.name)
+
                     let columns = [GridItem(.adaptive(minimum: 280), spacing: 16, alignment: .top)]
                     LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
                         DetailSection(title: "Basic Information", icon: "info.circle") {
@@ -438,6 +440,58 @@ extension ContainerInfoView {
         let days = seconds / 86_400, hours = (seconds % 86_400) / 3_600, minutes = (seconds % 3_600) / 60
         let text = days > 0 ? "\(days)d \(hours)h" : hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
         return " · up \(text)"
+    }
+}
+
+// MARK: - Actions
+
+/// Start/Stop, Restart, Edit Configuration and Delete for the container on
+/// screen, laid out like the machine page. Goes through the same command
+/// path as the Container menu, so the Settings confirmations apply.
+struct ContainerActionsRow: View {
+    let containerId: String
+
+    @EnvironmentObject private var containerManager: ContainerizationWrapper
+    @EnvironmentObject private var appNavigation: AppNavigation
+
+    private var container: Container? { containerManager.containers.first { $0.id == containerId } }
+    private var isBusy: Bool { containerManager.updatingContainerIDs.contains(containerId) }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if isBusy {
+                ProgressView().scaleEffect(0.8)
+            } else if container?.status == .running {
+                Button { appNavigation.requestContainerCommand(.stop) } label: {
+                    Label("Stop", systemImage: "stop.fill")
+                }
+                .actionButtonStyle()
+                Button { appNavigation.requestContainerCommand(.restart) } label: {
+                    Label("Restart", systemImage: "arrow.clockwise")
+                }
+                .actionButtonStyle()
+            } else {
+                Button { appNavigation.requestContainerCommand(.start) } label: {
+                    Label("Start", systemImage: "play.fill")
+                }
+                .actionButtonStyle(prominent: true)
+                .disabled(container == nil)
+            }
+
+            Button { appNavigation.requestContainerCommand(.edit) } label: {
+                Label("Edit Configuration", systemImage: "slider.horizontal.3")
+            }
+            .actionButtonStyle()
+            .disabled(isBusy || container == nil)
+
+            Spacer()
+
+            Button(role: .destructive) { appNavigation.requestContainerCommand(.delete) } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            .actionButtonStyle()
+            .disabled(isBusy || container == nil)
+        }
     }
 }
 
