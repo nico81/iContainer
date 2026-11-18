@@ -39,7 +39,7 @@ A native macOS app to manage [Apple Container](https://github.com/apple/containe
 
 ## Requirements
 
-- macOS 26 or later (Apple silicon)
+- macOS 26 or later (Apple silicon) — tested on macOS 27 since 2.7
 - [Apple Container CLI](https://github.com/apple/container/releases) installed
 - Apple Intelligence enabled (optional) — only needed for the on-device AI log analysis; everything else works without it
 - Docker Desktop or a `docker` CLI (optional) — only needed to import images / clone containers from Docker

@@ -17,7 +17,8 @@ The format follows Keep a Changelog, and versions use semantic versioning:
   header shows the connection state with *Restart* and *Open in Terminal*
   (the same session in Terminal.app). Containers use your preferred shell
   from Settings and fall back to `/bin/sh`; machines open their login shell
-  as your Mac user, or as root with *Run as root*. A stopped machine waits
+  as your Mac user, or as root with *Run as root* (switching it with a
+  session open asks to restart that session). A stopped machine waits
   for *Boot Machine & Open Terminal* instead of booting on its own; a
   stopped container offers *Start Container*. Uses the terminal font and
   colors from Settings. Replaces the previous line-based shell.
@@ -55,6 +56,10 @@ The format follows Keep a Changelog, and versions use semantic versioning:
 - The network page repeated its name in the toolbar above the large title.
 
 ### Notes
+- **Ready for macOS 27.** Built with Xcode 27 / the macOS 27 SDK and
+  checked screen by screen on macOS 27.2 in light and dark appearance:
+  sidebar, toolbars, detail tabs, sheets, Settings and terminals.
+  macOS 26 remains the minimum.
 - Verified with Apple `container` CLI **1.7.1** (installed with the in-app
   updater): containers, images, machines, networks, volumes, service
   status, disk usage and stats parse unchanged. 1.7.1's breaking changes
