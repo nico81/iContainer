@@ -33,8 +33,12 @@ nonisolated enum TerminalCommands {
     }
 
     /// A `.command` file body that runs the same session in Terminal.app.
+    /// It starts from `/` like the app does: `machine run` opens the shell
+    /// in the host's working directory when the machine can see it (the
+    /// home mount), so Terminal.app's default `~` would land in the Mac's
+    /// home instead of the machine user's.
     static func commandFile(cliPath: String, arguments: [String]) -> String {
-        "#!/bin/sh\nexec " + ([cliPath] + arguments).map(shellQuote).joined(separator: " ") + "\n"
+        "#!/bin/sh\ncd / || exit 1\nexec " + ([cliPath] + arguments).map(shellQuote).joined(separator: " ") + "\n"
     }
 }
 
@@ -58,6 +62,9 @@ final class TerminalSession: NSObject, ObservableObject, LocalProcessTerminalVie
 
     let terminalView: LocalProcessTerminalView
     private(set) var arguments: [String] = []
+    /// Set by a restart: SwiftTerm refuses `startProcess` until the old
+    /// child has exited, so the new session starts from `processTerminated`.
+    private var pendingArguments: [String]?
 
     private static var cache: [String: TerminalSession] = [:]
 
@@ -79,11 +86,31 @@ final class TerminalSession: NSObject, ObservableObject, LocalProcessTerminalVie
 
     /// Starts `container <arguments>`; restarts when already running.
     func start(arguments: [String]) {
+        guard SettingsManager.resolvedContainerCLIPath() != nil else {
+            state = .failed("CLI tool 'container' not found.")
+            return
+        }
+        guard !terminalView.process.running else {
+            // Restart: end the current session first; `processTerminated`
+            // launches the new one. Force it if the client ignores SIGTERM.
+            pendingArguments = arguments
+            terminalView.terminate()
+            let pid = terminalView.process.shellPid
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                guard let self, self.pendingArguments != nil, pid > 0,
+                      self.terminalView.process.shellPid == pid else { return }
+                kill(pid, SIGKILL)
+            }
+            return
+        }
+        launch(arguments)
+    }
+
+    private func launch(_ arguments: [String]) {
         guard let cliPath = SettingsManager.resolvedContainerCLIPath() else {
             state = .failed("CLI tool 'container' not found.")
             return
         }
-        if isRunning { terminalView.terminate() }
         self.arguments = arguments
         title = ""
         if state != .idle {
@@ -142,6 +169,11 @@ final class TerminalSession: NSObject, ObservableObject, LocalProcessTerminalVie
     func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
 
     func processTerminated(source: TerminalView, exitCode: Int32?) {
+        if let next = pendingArguments {
+            pendingArguments = nil
+            launch(next)
+            return
+        }
         state = .ended(exitCode: exitCode)
     }
 

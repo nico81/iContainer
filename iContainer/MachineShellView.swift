@@ -10,6 +10,7 @@ struct MachineShellView: View {
     @EnvironmentObject var containerManager: ContainerizationWrapper
     @StateObject private var session: TerminalSession
     @AppStorage("machineShell.runAsRoot") private var runAsRoot = false
+    @State private var confirmingUserSwitch = false
 
     init(machineId: String) {
         self.machineId = machineId
@@ -36,9 +37,9 @@ struct MachineShellView: View {
                             session: session,
                             startArguments: shellArguments,
                             accessory: AnyView(
-                                Toggle("Run as root", isOn: $runAsRoot)
+                                Toggle("Run as root", isOn: rootToggleBinding)
                                     .toggleStyle(.checkbox)
-                                    .help("Applies to the next session (Restart). By default you log in as your Mac user.")
+                                    .help("Run the shell as root instead of your Mac user. Switching restarts the open session.")
                             )
                         )
                         .frame(height: max(320, proxy.size.height - 180))
@@ -61,5 +62,27 @@ struct MachineShellView: View {
         .onAppear {
             if isMachineRunning, session.state == .idle { session.start(arguments: shellArguments()) }
         }
+        .confirmationDialog(
+            runAsRoot ? "Restart the terminal as root?" : "Restart the terminal as your Mac user?",
+            isPresented: $confirmingUserSwitch,
+            titleVisibility: .visible
+        ) {
+            Button("Restart Terminal") { session.start(arguments: shellArguments()) }
+            Button("Cancel", role: .cancel) { runAsRoot.toggle() }
+        } message: {
+            Text("The open session ends; anything running in it stops.")
+        }
+    }
+
+    /// Toggling with a live session asks to restart it, so the user the
+    /// shell runs as always matches the checkbox; Cancel reverts the box.
+    private var rootToggleBinding: Binding<Bool> {
+        Binding(
+            get: { runAsRoot },
+            set: { newValue in
+                runAsRoot = newValue
+                if session.isRunning { confirmingUserSwitch = true }
+            }
+        )
     }
 }

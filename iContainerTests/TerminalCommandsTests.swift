@@ -25,6 +25,6 @@ final class TerminalCommandsTests: XCTestCase {
     func testCommandFileQuotesEveryArgument() {
         let body = TerminalCommands.commandFile(cliPath: "/usr/local/bin/container",
                                                 arguments: ["machine", "run", "-n", "my box"])
-        XCTAssertEqual(body, "#!/bin/sh\nexec '/usr/local/bin/container' 'machine' 'run' '-n' 'my box'\n")
+        XCTAssertEqual(body, "#!/bin/sh\ncd / || exit 1\nexec '/usr/local/bin/container' 'machine' 'run' '-n' 'my box'\n")
     }
 }
