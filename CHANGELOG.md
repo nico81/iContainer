@@ -5,7 +5,7 @@ All notable changes to iContainer will be documented in this file.
 The format follows Keep a Changelog, and versions use semantic versioning:
 `MAJOR.MINOR.PATCH`.
 
-## [Unreleased]
+## [2.7.0] - 2026-11-18
 
 ### Added
 - **A real terminal for containers and machines.** The *Shell* tabs are now
