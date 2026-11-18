@@ -3,6 +3,16 @@
     <channel>
         <title>iContainer</title>
         <item>
+            <title>2.7.0</title>
+            <pubDate>Wed, 18 Nov 2026 09:27:11 +0100</pubDate>
+            <link>https://github.com/nico81/iContainer</link>
+            <sparkle:version>28</sparkle:version>
+            <sparkle:shortVersionString>2.7.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <enclosure url="https://github.com/nico81/iContainer/releases/download/v2.7.0/iContainer-v2.7.0.dmg" length="30242739" type="application/octet-stream" sparkle:edSignature="gxdsyKW65zw4qoC0XaNp06crsFYRJmY/Rz6muyom9nQlK/BPWS4ifwiQE5Z3cuWXVNPTZDTIMIlGyd73p2EiDg=="/>
+        </item>
+        <item>
             <title>2.6.0</title>
             <pubDate>Mon, 26 Oct 2026 09:38:14 +0100</pubDate>
             <link>https://github.com/nico81/iContainer</link>
@@ -21,16 +31,6 @@
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <enclosure url="https://github.com/nico81/iContainer/releases/download/v2.5.0/iContainer-v2.5.0.dmg" length="27134370" type="application/octet-stream" sparkle:edSignature="AqLyf6Jwxt+x2Ds/NcK6YX8e2uhM923lcGm1bYJTRK6phSe/K6u7Ct4Ckoj3/7tNkOSkkBjv9T1jruwNzJBxAg=="/>
-        </item>
-        <item>
-            <title>2.4.0</title>
-            <pubDate>Sat, 19 Sep 2026 00:27:38 +0200</pubDate>
-            <link>https://github.com/nico81/iContainer</link>
-            <sparkle:version>25</sparkle:version>
-            <sparkle:shortVersionString>2.4.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <enclosure url="https://github.com/nico81/iContainer/releases/download/v2.4.0/iContainer-v2.4.0.dmg" length="26973954" type="application/octet-stream" sparkle:edSignature="TDjLUzhpoHASIuLQiD/ZgaaZbdXOTUzzVW5qt1leZTlaVb1gCZu93dFMAOtyfRl8XIUlQGAGd6bRz+CqK6MJCg=="/>
         </item>
     </channel>
 </rss>
